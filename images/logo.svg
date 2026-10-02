@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240">
+  <defs>
+    <linearGradient id="wingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2979ff"/>
+      <stop offset="55%" stop-color="#b228ff"/>
+      <stop offset="100%" stop-color="#ff00c8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Upper-left wing -->
+  <path d="M118,98
+           C100,55 55,28 25,45
+           C-2,61 2,105 40,124
+           C70,139 108,128 118,98 Z" fill="url(#wingGrad)"/>
+  <!-- Upper-right wing -->
+  <path d="M122,98
+           C140,55 185,28 215,45
+           C242,61 238,105 200,124
+           C170,139 132,128 122,98 Z" fill="url(#wingGrad)"/>
+
+  <!-- Lower-left wing -->
+  <path d="M114,112
+           C104,148 72,180 46,174
+           C23,169 16,138 38,120
+           C58,104 94,101 114,112 Z" fill="url(#wingGrad)"/>
+  <!-- Lower-right wing -->
+  <path d="M126,112
+           C136,148 168,180 194,174
+           C217,169 224,138 202,120
+           C182,104 146,101 126,112 Z" fill="url(#wingGrad)"/>
+
+  <!-- Body -->
+  <rect x="111" y="96" width="18" height="72" rx="9" fill="#ffd600" stroke="#14161a" stroke-width="3"/>
+  <circle cx="120" cy="92" r="15" fill="#ffd600" stroke="#14161a" stroke-width="3"/>
+
+  <!-- Antennae -->
+  <path d="M113,80 C106,60 92,47 84,40" stroke="#ffd600" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+  <path d="M127,80 C134,60 148,47 156,40" stroke="#ffd600" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+  <circle cx="84" cy="40" r="4.5" fill="#ffd600"/>
+  <circle cx="156" cy="40" r="4.5" fill="#ffd600"/>
+
+  <!-- Brain motif in the head -->
+  <g stroke="#14161a" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M110,88 C110,81 115,78 120,81 C125,78 130,81 130,88"/>
+    <path d="M111,93 C115,90 117,94 120,92 C123,94 125,90 129,93"/>
+  </g>
+</svg>

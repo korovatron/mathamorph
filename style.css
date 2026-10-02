@@ -67,9 +67,22 @@ header .header-inner {
   padding: 1rem;
 }
 
+.title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.title-group .logo {
+  flex: none;
+  display: block;
+  position: relative;
+  top: 5px;
+}
+
 header h1 {
   margin: 0;
-  font-size: 1.6rem;
+  font-size: 1.9rem;
   font-weight: 800;
   letter-spacing: 0.02em;
   filter: drop-shadow(0 0 6px rgba(255, 0, 200, 0.35));
@@ -87,18 +100,112 @@ header h1 .t-morph {
   color: var(--title-morph);
 }
 
-#theme-toggle {
-  padding: 0.4rem 0.75rem;
-  border: 1px solid var(--header-border);
-  border-radius: 999px;
-  background: var(--header-control-bg);
+.header-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.5rem 0.9rem;
+  border: none;
+  border-radius: 0.4rem;
+  background: none;
   color: var(--header-text);
   font-size: 0.9rem;
+  text-align: left;
   cursor: pointer;
 }
 
-#theme-toggle:hover {
+.header-menu-item:hover {
   background: var(--header-control-bg-hover);
+}
+
+.header-menu-icon {
+  flex: none;
+  width: 1.1rem;
+  height: 1.1rem;
+  color: var(--header-text);
+}
+
+.header-menu-divider {
+  height: 1px;
+  margin: 0.3rem 0.2rem;
+  background: var(--header-border);
+}
+
+.morph-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 10rem;
+  margin: 0;
+  padding: 0.35rem;
+  list-style: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.5rem;
+  background: var(--field-bg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.morph-menu[hidden] {
+  display: none;
+}
+
+.morph-menu-item {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 0.8rem;
+  border: none;
+  border-radius: 0.4rem;
+  background: none;
+  color: var(--text);
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.morph-menu-item:hover {
+  background: var(--field-border-focus);
+  color: #ffffff;
+}
+
+.header-menu {
+  position: relative;
+}
+
+.header-menu-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 1px solid var(--header-border);
+  border-radius: 0.4rem;
+  background: var(--header-control-bg);
+  color: var(--header-text);
+  cursor: pointer;
+}
+
+.header-menu-toggle:hover {
+  background: var(--header-control-bg-hover);
+}
+
+.header-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 10;
+  min-width: 10rem;
+  margin: 0;
+  padding: 0.35rem;
+  list-style: none;
+  border: 1px solid var(--header-border);
+  border-radius: 0.5rem;
+  background: var(--header-bg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.header-menu-dropdown[hidden] {
+  display: none;
 }
 
 main {
@@ -153,7 +260,7 @@ math-field::part(menu-item):hover {
 
 .doc-line {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem;
 }
 
@@ -167,22 +274,50 @@ math-field::part(menu-item):hover {
   width: 1.75rem;
   height: 1.75rem;
   padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--border-strong);
   border-radius: 0.4rem;
   background: var(--control-bg);
   color: var(--text-muted);
-  line-height: 1;
   cursor: pointer;
 }
 
+.doc-line .delete-line svg {
+  width: 65%;
+  height: 65%;
+}
+
 .doc-line .delete-line:hover {
-  background: var(--control-bg-hover);
-  color: var(--error);
+  background: var(--error);
+  border-color: var(--error);
+  color: #ffffff;
+}
+
+.line-actions {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.line-actions .pdf-include {
+  margin: 0;
+  accent-color: var(--field-border-focus);
+  cursor: pointer;
+}
+
+.document-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
 }
 
 .add-line {
   align-self: flex-start;
-  margin-top: 0.5rem;
   padding: 0.4rem 0.8rem;
   border: 1px dashed var(--border-strong);
   border-radius: 0.4rem;
