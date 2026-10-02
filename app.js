@@ -333,6 +333,27 @@ function buildMorphSubmenu(field) {
 }
 
 function installFieldMenu(field) {
+  // MathLive's own "Copy" submenu (Copy as LaTeX/Typst/ASCII Math/MathML) is labelled with
+  // "Ctrl+C" next to "Copy as LaTeX", implying it matches the keyboard shortcut - it doesn't:
+  // Ctrl+C writes several clipboard flavours (including a $$-wrapped plain-text one that apps
+  // like Word recognise and render as a real equation on paste), while "Copy as LaTeX" only
+  // writes the bare, unwrapped LaTeX. Add a plain "Copy" item that genuinely replicates Ctrl+C,
+  // and rename the original submenu so it's clear it's for power users who want other formats.
+  const defaultItems = field.menuItems;
+  const copyIndex = defaultItems.findIndex((item) => item.id === 'copy');
+  const items = defaultItems.map((item, i) => {
+    if (i !== copyIndex) return item;
+    // Its "Copy as LaTeX" entry shows a "Ctrl+C" hint that's now misleading since the real
+    // Ctrl+C is replicated by the plain "Copy" item above, not this one - drop the hint.
+    return {
+      ...item,
+      label: 'Copy special',
+      submenu: item.submenu.map(({ keyboardShortcut, ...rest }) => rest),
+    };
+  });
+  const quickCopy = { label: 'Copy', onMenuSelect: () => field.executeCommand('copyToClipboard') };
+  const insertAt = copyIndex === -1 ? items.length : copyIndex;
+
   field.menuItems = [
     {
       label: 'Morph',
@@ -340,7 +361,9 @@ function installFieldMenu(field) {
       enabled: () => classifySelection(selectionLatexFor(field)) !== 'none',
     },
     { type: 'divider' },
-    ...field.menuItems,
+    ...items.slice(0, insertAt),
+    quickCopy,
+    ...items.slice(insertAt),
   ];
 }
 
