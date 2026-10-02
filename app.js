@@ -1041,6 +1041,13 @@ async function exportPdf() {
     const maxWidth = pageWidth - margin * 2;
     const lineGap = 18;
     const pxToPt = 72 / 96;
+    // Shrinking purely to fit the page width can crush a genuinely extreme, very wide line
+    // (e.g. (a+b)^89 fully expanded) down to a fraction of a point tall and effectively
+    // invisible. Never shrink a line below this fraction of its natural size, accepting that
+    // such lines will instead overflow the page's right-hand margin - this only ever kicks in
+    // for pathologically wide content; ordinary long equations shrink-to-fit as before.
+    const minScale = 0.2;
+    let anyLineOverflowed = false;
     let y = margin;
 
     for (const line of withContent) {
@@ -1051,7 +1058,9 @@ async function exportPdf() {
       let pdfWidth = width * pxToPt;
       let pdfHeight = height * pxToPt;
       if (pdfWidth > maxWidth) {
-        const ratio = maxWidth / pdfWidth;
+        const widthRatio = maxWidth / pdfWidth;
+        const ratio = Math.max(widthRatio, minScale);
+        if (ratio > widthRatio) anyLineOverflowed = true;
         pdfWidth *= ratio;
         pdfHeight *= ratio;
       }
@@ -1065,7 +1074,8 @@ async function exportPdf() {
     }
 
     doc.save('mathamorph.pdf');
-    showStatus(`Exported ${withContent.length} line(s) to PDF.`, false);
+    const overflowNote = anyLineOverflowed ? ' Some lines were too wide to fit the page and overflow its edge.' : '';
+    showStatus(`Exported ${withContent.length} line(s) to PDF.${overflowNote}`, false);
   } catch (err) {
     console.error(err);
     showStatus('Could not export PDF.', true);
