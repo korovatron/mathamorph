@@ -221,6 +221,7 @@ function createLine(initialLatex) {
   field.addEventListener('mount', () => {
     installFieldMenu(field);
     patchMatrixPickerHighlight(field);
+    patchContentOverflow(field);
   }, { once: true });
   field.addEventListener('beforeinput', (ev) => {
     if (ev.inputType === 'insertLineBreak') {
@@ -982,6 +983,34 @@ function patchMatrixPickerHighlight(field) {
     [part='menu-item'].active {
       background: var(--field-border-focus) !important;
       color: #ffffff !important;
+    }
+  `;
+  field.shadowRoot.appendChild(style);
+}
+
+// MathLive clips an overly wide formula (e.g. (a+b)^89 fully expanded) rather than wrapping or
+// scrolling it, silently hiding most of the result - force its internal content to scroll
+// horizontally instead, since that can only be reached via the shadow root, not ::part().
+function patchContentOverflow(field) {
+  const style = document.createElement('style');
+  style.textContent = `
+    .ML__content {
+      overflow-x: auto !important;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-strong) transparent;
+    }
+    .ML__content::-webkit-scrollbar {
+      height: 8px;
+    }
+    .ML__content::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .ML__content::-webkit-scrollbar-thumb {
+      background: var(--border-strong);
+      border-radius: 4px;
+    }
+    .ML__content::-webkit-scrollbar-thumb:hover {
+      background: var(--field-border-focus);
     }
   `;
   field.shadowRoot.appendChild(style);

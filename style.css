@@ -305,6 +305,7 @@ math-field {
   background: var(--field-bg);
   color: var(--text);
   outline: none;
+  max-width: 100%;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   --selection-background-color: var(--field-selection-bg);
   --selection-color: var(--text);
