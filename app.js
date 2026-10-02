@@ -5,6 +5,23 @@ import { svg2pdf } from 'https://cdn.jsdelivr.net/npm/svg2pdf.js@2/+esm';
 
 const ce = new ComputeEngine();
 
+// Compute Engine can produce syntactically-broken LaTeX for sufficiently nonsensical input
+// (e.g. integrating with respect to a matrix "differential") without throwing or flagging it
+// as invalid itself - MathLive only reports the problem once asked to parse it (as parse
+// errors, not an exception), so this offscreen field exists purely to ask it that question
+// before any such result is ever inserted into a real line.
+const scratchField = document.createElement('math-field');
+scratchField.style.position = 'fixed';
+scratchField.style.left = '-9999px';
+scratchField.tabIndex = -1;
+scratchField.setAttribute('aria-hidden', 'true');
+document.body.appendChild(scratchField);
+
+function isWellFormedLatex(latex) {
+  scratchField.value = latex;
+  return scratchField.errors.length === 0;
+}
+
 const themeToggleBtn = document.getElementById('theme-toggle');
 const themeToggleLabel = document.getElementById('theme-toggle-label');
 const themeToggleIcon = document.getElementById('theme-toggle-icon');
@@ -191,14 +208,13 @@ function createLine(initialLatex) {
   });
   field.addEventListener('input', schedulePersist);
   // Capture phase, so this runs before MathLive's own internal handler for the same event -
-  // stopPropagation() then keeps MathLive's menu from also opening behind ours.
+  // stopPropagation() then keeps MathLive's own (now-empty) menu from also trying to open.
   field.addEventListener('contextmenu', (ev) => {
-    const latex = selectionLatexFor(field);
-    if (!latex) return; // nothing selected - let MathLive's own menu open as usual
     ev.preventDefault();
     ev.stopPropagation();
     activeMathField = field;
-    openMorphMenu(field, ev.clientX, ev.clientY);
+    field.focus();
+    openFieldMenu(field, ev.clientX, ev.clientY);
   }, true);
   // menuItems requires the field to be connected to the DOM, which only happens after
   // the caller appends the returned line - defer until MathLive reports it's mounted.
@@ -484,6 +500,11 @@ function runOperation(compute) {
     return;
   }
 
+  if (!isWellFormedLatex(result)) {
+    showStatus('Could not produce a valid result for that selection.', true);
+    return;
+  }
+
   // The menu blurring the field earlier may have collapsed its selection - restore it so the
   // insert below replaces the originally-selected text instead of landing at a stale cursor.
   restoreSelectionIfNeeded(activeMathField);
@@ -592,91 +613,226 @@ const operations = [
 // A single shared context menu for "Morph" operations, triggered by right-clicking a selection.
 // MathLive's own menu system has a long-standing upstream bug where nested-submenu clicks get
 // swallowed (https://github.com/arnog/mathlive/issues/2927), which made "Morph" unreliable when
-// it lived inside that menu - this plain DOM dropdown sidesteps the problem entirely.
-const morphMenu = document.createElement('ul');
-morphMenu.className = 'morph-menu';
-morphMenu.setAttribute('role', 'menu');
-morphMenu.hidden = true;
-document.body.appendChild(morphMenu);
+// it lived inside that menu - this plain DOM dropdown sidesteps the problem entirely. It now
+// also fully replaces MathLive's own field menu (Cut/Copy/Paste/Insert Matrix/Mode), reusing
+// MathLive's own command logic (via the cached native items below) but with our own reliable
+// click handling.
+const fieldMenu = document.createElement('ul');
+fieldMenu.className = 'morph-menu';
+fieldMenu.setAttribute('role', 'menu');
+fieldMenu.hidden = true;
+document.body.appendChild(fieldMenu);
 
-function closeMorphMenu() {
-  morphMenu.hidden = true;
+function closeFieldMenu() {
+  fieldMenu.hidden = true;
 }
 
-// Shows the operations valid for the field's current selection at the given viewport position.
-function openMorphMenu(field, x, y) {
-  const kind = classifySelection(selectionLatexFor(field));
-  const groups = visibleGroupsByKind[kind];
-  const applicable = operations.filter((op) => groups.includes(op.group));
-  if (applicable.length === 0) return;
+// Some of MathLive's own menu item labels are lazy getter functions (for localisation)
+// rather than plain strings - resolve either form to display text.
+function resolveLabel(item) {
+  return typeof item?.label === 'function' ? item.label() : item?.label;
+}
 
-  morphMenu.innerHTML = '';
-  for (const op of applicable) {
-    const li = document.createElement('li');
-    li.setAttribute('role', 'none');
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'morph-menu-item';
-    button.setAttribute('role', 'menuitem');
-    button.textContent = op.label;
-    button.addEventListener('click', () => {
-      activeMathField = field;
-      runOperation(op.compute);
-      closeMorphMenu();
+function addMenuDivider(menu) {
+  const li = document.createElement('li');
+  li.setAttribute('role', 'none');
+  li.className = 'morph-menu-divider';
+  menu.appendChild(li);
+}
+
+function addMenuButton(menu, label, onActivate) {
+  const li = document.createElement('li');
+  li.setAttribute('role', 'none');
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'morph-menu-item';
+  button.setAttribute('role', 'menuitem');
+  button.textContent = label;
+  button.addEventListener('click', () => {
+    onActivate();
+    closeFieldMenu();
+  });
+  li.appendChild(button);
+  menu.appendChild(li);
+  return li;
+}
+
+// An inline, click-to-expand submenu (rather than MathLive's hover-to-open flyouts, which is
+// exactly the interaction pattern its own nested menus get stuck on) - items: {label, onActivate}.
+function addSubmenu(menu, label, items) {
+  const li = document.createElement('li');
+  li.setAttribute('role', 'none');
+
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'morph-menu-item morph-submenu-toggle';
+  toggle.setAttribute('role', 'menuitem');
+  toggle.setAttribute('aria-haspopup', 'true');
+  toggle.setAttribute('aria-expanded', 'false');
+  toggle.textContent = label;
+
+  const submenu = document.createElement('ul');
+  submenu.className = 'morph-submenu';
+  submenu.setAttribute('role', 'menu');
+  submenu.hidden = true;
+  // Reserve space for a tick mark on every item if any item in this submenu uses one, so
+  // unchecked items don't shift when a different one becomes checked.
+  if (items.some((item) => 'checked' in item)) submenu.classList.add('morph-submenu-checkable');
+
+  for (const item of items) {
+    const subLi = document.createElement('li');
+    subLi.setAttribute('role', 'none');
+    const subButton = document.createElement('button');
+    subButton.type = 'button';
+    subButton.className = 'morph-menu-item';
+    subButton.classList.toggle('morph-menu-item-checked', Boolean(item.checked));
+    subButton.setAttribute('role', 'checked' in item ? 'menuitemradio' : 'menuitem');
+    if ('checked' in item) subButton.setAttribute('aria-checked', String(Boolean(item.checked)));
+    subButton.textContent = item.label;
+    subButton.addEventListener('click', () => {
+      item.onActivate();
+      closeFieldMenu();
     });
-    li.appendChild(button);
-    morphMenu.appendChild(li);
+    subLi.appendChild(subButton);
+    submenu.appendChild(subLi);
   }
 
-  morphMenu.hidden = false;
+  toggle.addEventListener('click', () => {
+    const willOpen = submenu.hidden;
+    submenu.hidden = !willOpen;
+    toggle.setAttribute('aria-expanded', String(willOpen));
+  });
+
+  li.append(toggle, submenu);
+  menu.appendChild(li);
+  return li;
+}
+
+// A 5x5 grid of cells (matching MathLive's own insert-matrix size range) that highlights up to
+// the hovered cell and, on click, runs the matching native insert-matrix-RxC command.
+function addMatrixPicker(menu, field, insertMatrixItems) {
+  const li = document.createElement('li');
+  li.setAttribute('role', 'none');
+  const label = document.createElement('div');
+  label.className = 'matrix-picker-label';
+  label.textContent = 'Insert matrix';
+  const grid = document.createElement('div');
+  grid.className = 'matrix-picker-grid';
+  const cells = [];
+  for (let row = 1; row <= 5; row++) {
+    for (let col = 1; col <= 5; col++) {
+      const cell = document.createElement('div');
+      cell.className = 'matrix-picker-cell';
+      cell.addEventListener('mouseenter', () => {
+        label.textContent = `Insert matrix (${row} \u00d7 ${col})`;
+        for (const c of cells) c.cell.classList.toggle('active', c.row <= row && c.col <= col);
+      });
+      cell.addEventListener('click', () => {
+        const item = insertMatrixItems.find((i) => i.data.row === row && i.data.col === col);
+        activeMathField = field;
+        field.focus();
+        item?.onMenuSelect();
+        closeFieldMenu();
+      });
+      cells.push({ cell, row, col });
+      grid.appendChild(cell);
+    }
+  }
+  grid.addEventListener('mouseleave', () => {
+    label.textContent = 'Insert matrix';
+    for (const c of cells) c.cell.classList.remove('active');
+  });
+  li.append(label, grid);
+  menu.appendChild(li);
+}
+
+// Builds and shows the field's whole right-click menu: Morph operations for the current
+// selection (if any), clipboard actions, export, and the always-available insert/mode tools.
+function openFieldMenu(field, x, y) {
+  const native = nativeMenuDataByField.get(field);
+  const selectionLatex = selectionLatexFor(field);
+
+  fieldMenu.innerHTML = '';
+
+  if (selectionLatex) {
+    const kind = classifySelection(selectionLatex);
+    const groups = visibleGroupsByKind[kind];
+    const applicable = operations.filter((op) => groups.includes(op.group));
+    for (const op of applicable) {
+      addMenuButton(fieldMenu, op.label, () => {
+        activeMathField = field;
+        runOperation(op.compute);
+      });
+    }
+    if (applicable.length) addMenuDivider(fieldMenu);
+
+    addMenuButton(fieldMenu, 'Cut', () => native.cut?.onMenuSelect());
+    addMenuButton(fieldMenu, 'Copy', () => field.executeCommand('copyToClipboard'));
+    addSubmenu(
+      fieldMenu,
+      'Copy special',
+      native.copyFormats.map((format) => ({ label: resolveLabel(format), onActivate: () => format.onMenuSelect() })),
+    );
+    addMenuDivider(fieldMenu);
+  }
+
+  const exportItem = buildExportMenu(field);
+  for (const exp of exportItem.submenu) addMenuButton(fieldMenu, exp.label, () => exp.onMenuSelect());
+  addMenuDivider(fieldMenu);
+
+  addMenuButton(fieldMenu, 'Paste', () => native.paste?.onMenuSelect());
+  addMenuDivider(fieldMenu);
+
+  addMatrixPicker(fieldMenu, field, native.insertMatrix);
+  addMenuDivider(fieldMenu);
+
+  addSubmenu(
+    fieldMenu,
+    'Mode',
+    native.modes.map((mode) => ({
+      label: resolveLabel(mode),
+      checked: typeof mode.checked === 'function' ? mode.checked() : Boolean(mode.checked),
+      onActivate: () => mode.onMenuSelect(),
+    })),
+  );
+
+  fieldMenu.hidden = false;
   // Clamp position so the menu doesn't spill off the right/bottom edge of the viewport.
-  const rect = morphMenu.getBoundingClientRect();
+  const rect = fieldMenu.getBoundingClientRect();
   const left = Math.max(8, Math.min(x, window.innerWidth - rect.width - 8));
   const top = Math.max(8, Math.min(y, window.innerHeight - rect.height - 8));
-  morphMenu.style.left = `${left}px`;
-  morphMenu.style.top = `${top}px`;
+  fieldMenu.style.left = `${left}px`;
+  fieldMenu.style.top = `${top}px`;
 }
 
 // Capture phase, since clicks inside the math-field's own shadow DOM get stopped there before
 // they'd otherwise bubble up to document - capture fires first, so this still sees them.
 document.addEventListener('click', (ev) => {
-  if (!morphMenu.hidden && !morphMenu.contains(ev.target)) closeMorphMenu();
+  if (!fieldMenu.hidden && !fieldMenu.contains(ev.target)) closeFieldMenu();
 }, true);
 
 document.addEventListener('keydown', (ev) => {
-  if (ev.key === 'Escape' && !morphMenu.hidden) closeMorphMenu();
+  if (ev.key === 'Escape' && !fieldMenu.hidden) closeFieldMenu();
 });
 
-function installFieldMenu(field) {
-  // MathLive's own "Copy" submenu (Copy as LaTeX/Typst/ASCII Math/MathML) is labelled with
-  // "Ctrl+C" next to "Copy as LaTeX", implying it matches the keyboard shortcut - it doesn't:
-  // Ctrl+C writes several clipboard flavours (including a $$-wrapped plain-text one that apps
-  // like Word recognise and render as a real equation on paste), while "Copy as LaTeX" only
-  // writes the bare, unwrapped LaTeX. Add a plain "Copy" item that genuinely replicates Ctrl+C,
-  // and rename the original submenu so it's clear it's for power users who want other formats.
-  const defaultItems = field.menuItems;
-  const copyIndex = defaultItems.findIndex((item) => item.id === 'copy');
-  const items = defaultItems.map((item, i) => {
-    if (i !== copyIndex) return item;
-    // Its "Copy as LaTeX" entry shows a "Ctrl+C" hint that's now misleading since the real
-    // Ctrl+C is replicated by the plain "Copy" item above, not this one - drop the hint.
-    return {
-      ...item,
-      label: 'Copy special',
-      submenu: item.submenu.map(({ keyboardShortcut, ...rest }) => rest),
-    };
-  });
-  const quickCopy = { label: 'Copy', onMenuSelect: () => field.executeCommand('copyToClipboard') };
-  const insertAt = copyIndex === -1 ? items.length : copyIndex;
-  const exportItem = buildExportMenu(field);
+// Caches the handful of MathLive native menu items whose logic we reuse (Cut/Copy
+// formats/Paste/Insert Matrix/Mode) before replacing the field's own menu with an empty one.
+const nativeMenuDataByField = new WeakMap();
 
-  field.menuItems = [
-    ...items.slice(0, insertAt),
-    quickCopy,
-    ...items.slice(insertAt, insertAt + 1),
-    exportItem,
-    ...items.slice(insertAt + 1),
-  ];
+function installFieldMenu(field) {
+  const defaultItems = field.menuItems;
+  const findItem = (id) => defaultItems.find((item) => item.id === id);
+  nativeMenuDataByField.set(field, {
+    cut: findItem('cut'),
+    copyFormats: findItem('copy')?.submenu ?? [],
+    paste: findItem('paste'),
+    insertMatrix: findItem('insert-matrix')?.submenu ?? [],
+    modes: findItem('mode')?.submenu ?? [],
+  });
+  // MathLive's own menu system has a long-standing upstream bug where nested-submenu clicks
+  // get swallowed (https://github.com/arnog/mathlive/issues/2927) - replace it entirely with
+  // our own right-click menu (see openFieldMenu), which reuses this cached command logic.
+  field.menuItems = [];
 }
 
 // MathJax's SVG output renders every glyph as real <path> vector data (no fonts/foreignObject

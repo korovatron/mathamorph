@@ -136,6 +136,8 @@ header h1 .t-morph {
   position: fixed;
   z-index: 1000;
   min-width: 10rem;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
   margin: 0;
   padding: 0.35rem;
   list-style: none;
@@ -147,6 +149,12 @@ header h1 .t-morph {
 
 .morph-menu[hidden] {
   display: none;
+}
+
+.morph-menu-divider {
+  height: 1px;
+  margin: 0.3rem 0.2rem;
+  background: var(--border-strong);
 }
 
 .morph-menu-item {
@@ -165,6 +173,73 @@ header h1 .t-morph {
 .morph-menu-item:hover {
   background: var(--field-border-focus);
   color: #ffffff;
+}
+
+.morph-submenu-toggle {
+  position: relative;
+  padding-right: 1.6rem;
+}
+
+.morph-submenu-toggle::after {
+  content: '\203a';
+  position: absolute;
+  right: 0.8rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1rem;
+}
+
+.morph-submenu-toggle[aria-expanded='true']::after {
+  content: '\2039';
+}
+
+.morph-submenu {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 0.9rem;
+}
+
+.morph-submenu[hidden] {
+  display: none;
+}
+
+.morph-submenu-checkable .morph-menu-item {
+  position: relative;
+  padding-left: 1.7rem;
+}
+
+.morph-submenu-checkable .morph-menu-item-checked::before {
+  content: '\2713';
+  position: absolute;
+  left: 0.6rem;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.matrix-picker-label {
+  padding: 0.3rem 0.8rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.matrix-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1.1rem);
+  grid-template-rows: repeat(5, 1.1rem);
+  gap: 2px;
+  padding: 0.2rem 0.8rem 0.4rem;
+}
+
+.matrix-picker-cell {
+  border: 1px solid var(--border-strong);
+  border-radius: 0.15rem;
+  background: var(--control-bg);
+  cursor: pointer;
+}
+
+.matrix-picker-cell.active {
+  background: var(--field-border-focus);
+  border-color: var(--field-border-focus);
 }
 
 .header-menu {
@@ -245,6 +320,12 @@ math-field:focus-within {
 math-field::part(virtual-keyboard-toggle),
 math-field::part(menu-toggle) {
   color: var(--field-border-focus);
+}
+
+/* Our own right-click menu fully replaces MathLive's own field menu (see openFieldMenu in
+   app.js), so hide its now-unused toggle button. */
+math-field::part(menu-toggle) {
+  display: none;
 }
 
 math-field::part(menu-item):hover {
