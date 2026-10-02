@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mathamorph</title>
+<script>
+  // Applied synchronously, before the stylesheet paints, to avoid a flash of the wrong theme.
+  (function () {
+    var stored = localStorage.getItem('mathamorph-theme');
+    var theme = stored || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+</script>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <h1><span class="t-math">Math</span><span class="t-link">a</span><span class="t-morph">morph</span></h1>
+      <button id="theme-toggle" type="button" aria-pressed="false">Dark mode</button>
+    </div>
+  </header>
+
+  <main>
+    <p class="hint">
+      Select part of a line (drag, double-click a bracketed group, or hold
+      Shift and use the arrow keys), then open the field's menu for a
+      "Morph" submenu of the operations valid for that selection. Press
+      Enter to start a new line, Backspace at the start of a line to merge
+      it with the one above.
+    </p>
+
+    <div class="document" id="document"></div>
+    <button id="btn-add-line" class="add-line" type="button">+ Add line</button>
+
+    <div class="toolbar" id="settings-bar">
+      <label for="variable-input">wrt</label>
+      <input id="variable-input" type="text" value="x" size="2" />
+      <span class="divider"></span>
+      <label for="series-about">series about</label>
+      <input id="series-about" type="text" value="0" size="2" />
+      <label for="series-terms">terms</label>
+      <input id="series-terms" type="text" value="4" size="2" />
+    </div>
+
+    <p id="status"></p>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

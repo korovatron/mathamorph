@@ -1,0 +1,230 @@
+:root {
+  color-scheme: light;
+  font-family: system-ui, sans-serif;
+
+  --bg: #f7f8fa;
+  --text: #1a1a1a;
+  --text-muted: #666666;
+  --border: #dddddd;
+  --border-strong: #bbbbbb;
+  --control-bg: #eceef2;
+  --control-bg-hover: #e1e4e9;
+  --error: #b00020;
+  --field-bg: #ffffff;
+
+  --title-math: #2979ff;
+  --title-link: #ffd600;
+  --title-morph: #ff00c8;
+
+  --field-border: rgba(41, 121, 255, 0.45);
+  --field-border-focus: #2979ff;
+  --field-glow: rgba(41, 121, 255, 0.45);
+  --field-selection-bg: rgba(41, 121, 255, 0.35);
+  --field-contains-bg: rgba(41, 121, 255, 0.18);
+
+  /* Light mode gets a slightly lighter header bar than dark mode, so it reads less harshly against the white canvas. */
+  --header-bg: #2b2f38;
+  --header-border: #3a3f49;
+  --header-text: #e8e8ea;
+  --header-control-bg: #343842;
+  --header-control-bg-hover: #3f4450;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #14161a;
+  --text: #e8e8ea;
+  --text-muted: #9aa0a6;
+  --border: #333942;
+  --border-strong: #454c56;
+  --control-bg: #262a33;
+  --control-bg-hover: #323844;
+  --error: #ff6b6b;
+  --field-bg: #1b1e24;
+
+  --header-bg: #1c1f26;
+  --header-border: #333942;
+  --header-control-bg: #262a33;
+  --header-control-bg-hover: #323844;
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  background: var(--bg);
+}
+
+header {
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--header-border);
+}
+
+header .header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  filter: drop-shadow(0 0 6px rgba(255, 0, 200, 0.35));
+}
+
+header h1 .t-math {
+  color: var(--title-math);
+}
+
+header h1 .t-link {
+  color: var(--title-link);
+}
+
+header h1 .t-morph {
+  color: var(--title-morph);
+}
+
+#theme-toggle {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--header-border);
+  border-radius: 999px;
+  background: var(--header-control-bg);
+  color: var(--header-text);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+#theme-toggle:hover {
+  background: var(--header-control-bg-hover);
+}
+
+main {
+  max-width: 90rem;
+  margin: 0 auto;
+  padding: 2rem 2rem;
+  box-sizing: border-box;
+}
+
+.hint {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-top: 0;
+}
+
+math-field {
+  font-size: 1.4rem;
+  padding: 0.75rem;
+  border: 1px solid var(--field-border);
+  border-radius: 0.5rem;
+  box-sizing: border-box;
+  background: var(--field-bg);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  --selection-background-color: var(--field-selection-bg);
+  --selection-color: var(--text);
+  --contains-highlight-background-color: var(--field-contains-bg);
+  --primary: var(--field-border-focus);
+}
+
+math-field:focus-within {
+  border: 1.5px solid var(--field-border-focus);
+  box-shadow: 0 0 0 2px rgba(41, 121, 255, 0.25), 0 0 8px rgba(41, 121, 255, 0.3);
+}
+
+math-field::part(virtual-keyboard-toggle),
+math-field::part(menu-toggle) {
+  color: var(--field-border-focus);
+}
+
+math-field::part(menu-item):hover {
+  background: var(--field-border-focus);
+  color: #ffffff;
+}
+
+.document {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.doc-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.doc-line math-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.doc-line .delete-line {
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.4rem;
+  background: var(--control-bg);
+  color: var(--text-muted);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.doc-line .delete-line:hover {
+  background: var(--control-bg-hover);
+  color: var(--error);
+}
+
+.add-line {
+  align-self: flex-start;
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.8rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: 0.4rem;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.add-line:hover {
+  background: var(--control-bg);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.toolbar .divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border-strong);
+}
+
+#variable-input,
+#series-about,
+#series-terms {
+  padding: 0.3rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.3rem;
+  text-align: center;
+  color: var(--text);
+  background: var(--field-bg);
+}
+
+#status {
+  min-height: 1.2em;
+  color: var(--text-muted);
+}
+
+#status.error {
+  color: var(--error);
+}
