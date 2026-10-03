@@ -391,7 +391,15 @@ math-field::part(menu-item):hover {
   min-width: 0;
 }
 
-.doc-line .delete-line {
+.doc-line-actions {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.doc-line .delete-line,
+.doc-line .field-menu-btn {
   flex: none;
   width: 1.75rem;
   height: 1.75rem;
@@ -406,7 +414,8 @@ math-field::part(menu-item):hover {
   cursor: pointer;
 }
 
-.doc-line .delete-line svg {
+.doc-line .delete-line svg,
+.doc-line .field-menu-btn svg {
   width: 65%;
   height: 65%;
 }
@@ -415,6 +424,24 @@ math-field::part(menu-item):hover {
   background: var(--error);
   border-color: var(--error);
   color: #ffffff;
+}
+
+.doc-line .field-menu-btn:hover {
+  background: var(--field-border-focus);
+  border-color: var(--field-border-focus);
+  color: #ffffff;
+}
+
+/* This button is a touch-device fallback for opening the field menu (see createLine in app.js)
+   - on desktop, right-click already does the job, so keep it out of the way there. */
+.doc-line .field-menu-btn {
+  display: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .doc-line .field-menu-btn {
+    display: inline-flex;
+  }
 }
 
 .document-actions {

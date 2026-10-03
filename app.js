@@ -159,18 +159,16 @@ function isMinusKeyEvent(ev) {
   return ev.code === 'Minus' || ev.code === 'NumpadSubtract';
 }
 
-// How long a touch has to be held, and how far it's allowed to drift, to count as a
-// long-press-to-open-the-menu gesture rather than a tap or a selection drag.
-const LONG_PRESS_MS = 500;
-const LONG_PRESS_MOVE_TOLERANCE_PX = 10;
-
-// Creates one row of the document: a mathfield plus a delete button.
+// Creates one row of the document: a mathfield plus action buttons.
 function createLine(initialLatex) {
   const line = document.createElement('div');
   line.className = 'doc-line';
 
   const field = document.createElement('math-field');
   field.value = initialLatex || '';
+
+  const actions = document.createElement('div');
+  actions.className = 'doc-line-actions';
 
   const deleteBtn = document.createElement('button');
   deleteBtn.type = 'button';
@@ -181,7 +179,28 @@ function createLine(initialLatex) {
     '<line x1="4" y1="4" x2="20" y2="20"/><line x1="20" y1="4" x2="4" y2="20"/></svg>';
   deleteBtn.addEventListener('click', () => removeLine(line));
 
-  line.append(field, deleteBtn);
+  // MathLive's touch handling is unreliable enough (long-press doesn't reach a "contextmenu"
+  // event, and in practice doesn't reliably trigger a long-press gesture at all) that fighting
+  // it isn't worth it - instead, touch devices get this dedicated button (hidden on desktop via
+  // CSS) that opens the same menu directly. There's no reliable per-touch-device way to know
+  // which part of the equation the user meant, so it simply selects the whole field first.
+  const menuBtn = document.createElement('button');
+  menuBtn.type = 'button';
+  menuBtn.className = 'field-menu-btn';
+  menuBtn.setAttribute('aria-label', 'Open menu');
+  menuBtn.innerHTML =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">' +
+    '<line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>';
+  menuBtn.addEventListener('click', () => {
+    activeMathField = field;
+    field.focus();
+    field.executeCommand('selectAll');
+    const rect = menuBtn.getBoundingClientRect();
+    openFieldMenu(field, rect.left, rect.bottom);
+  });
+
+  actions.append(deleteBtn, menuBtn);
+  line.append(field, actions);
 
   field.addEventListener('focus', () => {
     activeMathField = field;
@@ -196,51 +215,6 @@ function createLine(initialLatex) {
     field.focus();
     openFieldMenu(field, ev.clientX, ev.clientY);
   }, true);
-  // iOS Safari never fires "contextmenu" from a long-press (unlike a desktop right-click, or
-  // even Android Chrome's long-press), so touch users would otherwise have no way to reach the
-  // menu at all. Detect a long-press ourselves and open the same menu, but only when there's
-  // already a selection to act on - this uses raw "touchstart" (rather than, say, pointerdown)
-  // specifically so preventDefault() can suppress the mouse/pointer events the browser would
-  // otherwise synthesize from the same touch; those are what MathLive's own handler uses to
-  // reposition the caret and collapse the selection, which otherwise happens immediately on
-  // touch-down - long before a long-press could ever be detected. A quick tap on top of an
-  // existing selection (released before the long-press fires) is harmless either way: it's
-  // simply absorbed, leaving the selection as it was, matching how most mobile text selection
-  // UIs behave until you tap outside the selection.
-  let longPressTimer = null;
-  let longPressOrigin = null;
-  const cancelLongPress = () => {
-    clearTimeout(longPressTimer);
-    longPressTimer = null;
-    longPressOrigin = null;
-  };
-  field.addEventListener('touchstart', (ev) => {
-    if (ev.touches.length !== 1) {
-      cancelLongPress();
-      return;
-    }
-    const hadSelection = !field.selectionIsCollapsed;
-    if (hadSelection) ev.preventDefault();
-    const touch = ev.touches[0];
-    longPressOrigin = { x: touch.clientX, y: touch.clientY };
-    longPressTimer = setTimeout(() => {
-      longPressTimer = null;
-      if (hadSelection && !field.selectionIsCollapsed) {
-        activeMathField = field;
-        field.focus();
-        openFieldMenu(field, longPressOrigin.x, longPressOrigin.y);
-      }
-    }, LONG_PRESS_MS);
-  }, { passive: false });
-  field.addEventListener('touchmove', (ev) => {
-    if (!longPressOrigin) return;
-    const touch = ev.touches[0];
-    const dx = touch.clientX - longPressOrigin.x;
-    const dy = touch.clientY - longPressOrigin.y;
-    if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_TOLERANCE_PX) cancelLongPress();
-  });
-  field.addEventListener('touchend', cancelLongPress);
-  field.addEventListener('touchcancel', cancelLongPress);
   // menuItems requires the field to be connected to the DOM, which only happens after
   // the caller appends the returned line - defer until MathLive reports it's mounted.
   field.addEventListener('mount', () => {
