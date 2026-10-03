@@ -141,6 +141,24 @@ function mathFieldIn(lineEl) {
   return lineEl.querySelector('math-field');
 }
 
+// MathLive's own inline shortcut for \pm only recognises the literal "+" character (Shift+Equal)
+// immediately followed by "-", and doesn't recognise the Numpad +/- keys at all (tested:
+// NumpadSubtract never joins a shortcut sequence, whichever position it's in). Handling this
+// ourselves instead additionally covers NumpadAdd followed by the "-/_" key or NumpadSubtract -
+// unlike "=" (unshifted Equal), which deliberately isn't treated as a \pm trigger here, since
+// "=-" is also exactly how an ordinary equation writes "equals negative" (e.g. "x=-7"), and
+// that's far too common a pattern to risk hijacking.
+const PLUS_MINUS_TIMEOUT_MS = 600;
+const pendingPlusByField = new WeakMap();
+
+function isPlusKeyEvent(ev) {
+  return ev.code === 'NumpadAdd' || (ev.code === 'Equal' && ev.shiftKey);
+}
+
+function isMinusKeyEvent(ev) {
+  return ev.code === 'Minus' || ev.code === 'NumpadSubtract';
+}
+
 // Creates one row of the document: a mathfield plus a delete button.
 function createLine(initialLatex) {
   const line = document.createElement('div');
@@ -199,8 +217,28 @@ function createLine(initialLatex) {
       if (prev) {
         ev.preventDefault();
         mergeIntoPrevious(line, prev);
+        return;
       }
     }
+    if (!ev.altKey && !ev.ctrlKey && !ev.metaKey) {
+      if (isPlusKeyEvent(ev)) {
+        // Let the "+"/"=" character insert as usual - just remember it might be the start of a
+        // \pm sequence, in case a "-"/"_"-like key follows soon after.
+        pendingPlusByField.set(field, Date.now());
+        return;
+      }
+      if (isMinusKeyEvent(ev)) {
+        const pendingAt = pendingPlusByField.get(field);
+        if (pendingAt && Date.now() - pendingAt <= PLUS_MINUS_TIMEOUT_MS) {
+          pendingPlusByField.delete(field);
+          ev.preventDefault();
+          field.executeCommand('deleteBackward');
+          field.insert('\\pm', { format: 'latex' });
+          return;
+        }
+      }
+    }
+    pendingPlusByField.delete(field);
   });
 
   return line;
@@ -1372,5 +1410,112 @@ importSnippetsInput.addEventListener('change', () => {
   importSnippetsInput.value = '';
 });
 
+const showAboutBtn = document.getElementById('show-about');
+const ABOUT_STARTUP_STORAGE_KEY = 'mathamorph-show-about-on-startup';
+
+// Defaults to showing it - a brand-new user has never seen it, so there's nothing to opt out of.
+function shouldShowAboutOnStartup() {
+  const raw = localStorage.getItem(ABOUT_STARTUP_STORAGE_KEY);
+  return raw === null ? true : raw === 'true';
+}
+
+const aboutDialog = document.createElement('dialog');
+aboutDialog.className = 'app-dialog about-dialog';
+aboutDialog.innerHTML = `
+  <div class="about-header">
+    <img src="images/logo.svg" alt="" class="about-logo" />
+    <h2><span class="t-math">Math</span><span class="t-link">a</span><span class="t-morph">morph</span></h2>
+  </div>
+  <p class="about-description">
+    Mathamorph lets you create and transform equations ready to drop into any document, slide, or
+    app. Type maths as easily as text, then <em>morph</em> it: simplify, solve, factorise, expand,
+    integrate, differentiate, or find eigenvalues, all with a quick highlight and click.
+  </p>
+  <p class="about-description">
+    Export clean results as <strong>PNG, SVG, or LaTeX</strong>, making it effortless to build
+    worksheets and presentations in less time. Mathamorph turns equation building into a creative,
+    time-saving flow for teachers and creators who need results fast.
+  </p>
+  <p class="about-copyright">&copy; 2026 Neil Kendall</p>
+  <p class="about-link">
+    <a href="https://www.korovatron.co.uk" target="_blank" rel="noopener noreferrer">More maths tools @ www.korovatron.co.uk</a>
+  </p>
+  <label class="about-startup-check">
+    <input type="checkbox" id="about-show-startup" />
+    Show this on startup
+  </label>
+  <div class="app-dialog-actions">
+    <button type="button" class="about-dialog-close app-dialog-primary">Close</button>
+  </div>
+`;
+document.body.appendChild(aboutDialog);
+const aboutShowStartupCheckbox = aboutDialog.querySelector('#about-show-startup');
+aboutShowStartupCheckbox.addEventListener('change', () => {
+  localStorage.setItem(ABOUT_STARTUP_STORAGE_KEY, String(aboutShowStartupCheckbox.checked));
+});
+const aboutCloseBtn = aboutDialog.querySelector('.about-dialog-close');
+aboutCloseBtn.addEventListener('click', () => aboutDialog.close());
+
+function openAboutDialog() {
+  aboutShowStartupCheckbox.checked = shouldShowAboutOnStartup();
+  aboutDialog.showModal();
+  // Without an explicit focus target, the browser defaults to focusing the first focusable
+  // element inside the dialog - here that's the "More maths tools" link, which then shows a
+  // jarring focus ring on open for no real reason. Close is a safer, more expected default.
+  aboutCloseBtn.focus();
+}
+
+showAboutBtn.addEventListener('click', () => {
+  openAboutDialog();
+  closeHeaderMenu();
+});
+
+// Reference for each shortcut: [what to type/press, what it does]. Verified directly against
+// MathLive's actual behaviour rather than assumed, since a wrong shortcut here is worse than none.
+const HELP_SHORTCUTS = [
+  { keys: '/', description: 'Turns what you just typed into a fraction (e.g. type 1/2).' },
+  { keys: 'sqrt', description: 'Square root.' },
+  { keys: '^', description: 'Superscript (power).' },
+  { keys: '_', description: 'Subscript.' },
+  { keys: 'pi, theta, alpha, ...', description: 'Greek letters - type the name.' },
+  { keys: 'infty', description: 'Infinity symbol (\u221e).' },
+  { keys: 'sum, int', description: 'Summation (\u2211) or integral (\u222b), with placeholders for the bounds.' },
+  { keys: '&gt;=, &lt;=, !=', description: 'Turns into \u2265, \u2264, \u2260.' },
+  {
+    keys: '+-',
+    description: 'Turns into \u00b1 (plus/minus). The + and - numpad keys work too, in either combination.',
+  },
+  { keys: '-=', description: 'Turns into \u2261 (is identical to).' },
+  { keys: '(', description: 'Automatically adds the matching closing bracket.' },
+  { keys: 'Tab / Shift+Tab', description: 'Jump to the next/previous placeholder.' },
+  {
+    keys: 'Esc, then e.g. \\equiv, then Enter',
+    description: 'Type a LaTeX command directly, for any symbol that doesn\u2019t have its own shortcut above.',
+  },
+];
+
+const helpDialog = document.createElement('dialog');
+helpDialog.className = 'app-dialog help-dialog';
+helpDialog.innerHTML = `
+  <h2>Shortcuts</h2>
+  <ul class="help-shortcuts">
+    ${HELP_SHORTCUTS.map((s) => `<li><code>${s.keys}</code><span>${s.description}</span></li>`).join('')}
+  </ul>
+  <div class="app-dialog-actions">
+    <button type="button" class="help-dialog-close app-dialog-primary">Close</button>
+  </div>
+`;
+document.body.appendChild(helpDialog);
+const helpCloseBtn = helpDialog.querySelector('.help-dialog-close');
+helpCloseBtn.addEventListener('click', () => helpDialog.close());
+
+const showHelpBtn = document.getElementById('show-help');
+showHelpBtn.addEventListener('click', () => {
+  helpDialog.showModal();
+  helpCloseBtn.focus();
+  closeHeaderMenu();
+});
+
 seedDefaultSnippetsIfNeeded();
 initializeDocument();
+if (shouldShowAboutOnStartup()) openAboutDialog();

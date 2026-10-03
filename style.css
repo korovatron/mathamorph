@@ -88,15 +88,15 @@ header h1 {
   filter: drop-shadow(0 0 6px rgba(255, 0, 200, 0.35));
 }
 
-header h1 .t-math {
+.t-math {
   color: var(--title-math);
 }
 
-header h1 .t-link {
+.t-link {
   color: var(--title-link);
 }
 
-header h1 .t-morph {
+.t-morph {
   color: var(--title-morph);
 }
 
@@ -364,6 +364,10 @@ math-field::part(menu-item):hover {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background: var(--control-bg);
 }
 
 .doc-line {
@@ -387,7 +391,7 @@ math-field::part(menu-item):hover {
   justify-content: center;
   border: 1px solid var(--border-strong);
   border-radius: 0.4rem;
-  background: var(--control-bg);
+  background: var(--field-bg);
   color: var(--text-muted);
   cursor: pointer;
 }
@@ -582,6 +586,103 @@ math-field::part(menu-item):hover {
   background: var(--error);
   border-color: var(--error);
   color: #ffffff;
+}
+
+.about-dialog {
+  max-width: 24rem;
+}
+
+.about-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.about-logo {
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.about-header h2 {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.about-description {
+  margin: 0 0 1rem;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.about-copyright {
+  margin: 0 0 0.25rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.about-link {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+}
+
+.about-link a {
+  color: var(--field-border-focus);
+}
+
+.about-startup-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.about-startup-check input {
+  margin: 0;
+  accent-color: var(--field-border-focus);
+  cursor: pointer;
+}
+
+.help-dialog {
+  max-width: 28rem;
+}
+
+.help-shortcuts {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.help-shortcuts li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.help-shortcuts code {
+  flex: none;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.3rem;
+  background: var(--control-bg);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.help-shortcuts span {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
 }
 
 #status {

@@ -71,6 +71,27 @@
               <span id="theme-toggle-label">Dark mode</span>
             </button>
           </li>
+          <li role="none" class="header-menu-divider"></li>
+          <li role="none">
+            <button id="show-help" class="header-menu-item" type="button" role="menuitem">
+              <svg class="header-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8" />
+                <path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.5v.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                <circle cx="12" cy="16.8" r="1.1" fill="currentColor" />
+              </svg>
+              <span>Help</span>
+            </button>
+          </li>
+          <li role="none">
+            <button id="show-about" class="header-menu-item" type="button" role="menuitem">
+              <svg class="header-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8" />
+                <line x1="12" y1="11" x2="12" y2="16.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                <circle cx="12" cy="7.5" r="1.1" fill="currentColor" />
+              </svg>
+              <span>About</span>
+            </button>
+          </li>
         </ul>
         <input type="file" id="import-snippets-input" accept="application/json,.json" hidden />
       </div>
@@ -79,16 +100,13 @@
 
   <main>
     <p class="hint">
-      Select part of a line (drag, double-click a bracketed group, or hold
-      Shift and use the arrow keys), then right-click the selection for a
-      "Morph" menu with Algebra, Calculus and Matrices submenus. Press Enter
-      to start a new line, Backspace at the start of a line to merge it with
-      the one above.
+      Select part of an equation, then right-click for options like
+      Simplify, Solve, Differentiate and more.
     </p>
 
     <div class="document" id="document"></div>
     <div class="document-actions">
-      <button id="btn-add-line" class="add-line" type="button">+ Add line</button>
+      <button id="btn-add-line" class="add-line" type="button">+ Add Equation</button>
     </div>
 
     <p id="status"></p>
