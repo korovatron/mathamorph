@@ -159,7 +159,9 @@ header h1 {
 }
 
 .morph-menu-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   width: 100%;
   padding: 0.4rem 0.8rem;
   border: none;
@@ -174,6 +176,23 @@ header h1 {
 .morph-menu-item:hover {
   background: var(--field-border-focus);
   color: #ffffff;
+}
+
+/* Reserved before every row's label (see createMenuIconSlot in app.js) so every row lines up at
+   the same indent, whether or not it actually has an icon in it. */
+.morph-menu-icon-slot {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.morph-menu-icon {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .morph-submenu-toggle {

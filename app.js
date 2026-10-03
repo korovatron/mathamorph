@@ -23,6 +23,28 @@ function isWellFormedLatex(latex) {
   return scratchField.errors.length === 0;
 }
 
+// Opening another window/tab (e.g. "Open in Graphiti", see buildExportMenu) leaves *that one*
+// field - and only that field - permanently unable to accept physical keystrokes once the user
+// switches back to this tab, even though it still looks and reports itself as focused. Unlike the
+// similar-looking corruption rebuildMathField works around elsewhere in this file, recreating the
+// element doesn't fix this particular case - only actually shifting real DOM focus somewhere else
+// and back does, which is why this briefly borrows the scratch field above (already a real,
+// always-present math-field, so a second visible line is never required) purely as a focus target.
+let fieldToRecoverOnRefocus = null;
+window.addEventListener('focus', () => {
+  const field = fieldToRecoverOnRefocus;
+  fieldToRecoverOnRefocus = null;
+  if (!field || !field.isConnected) return;
+  // Deferred a tick so this runs after the browser's own focus restoration (back to whichever
+  // element was focused when the window lost it) has already settled, rather than racing it.
+  setTimeout(() => {
+    const position = field.position;
+    scratchField.focus();
+    field.focus();
+    field.position = position;
+  }, 0);
+});
+
 const themeToggleBtn = document.getElementById('theme-toggle');
 const themeToggleLabel = document.getElementById('theme-toggle-label');
 const themeToggleIcon = document.getElementById('theme-toggle-icon');
@@ -631,6 +653,58 @@ function isHeaded(latex, head) {
   return Array.isArray(json) && json[0] === head;
 }
 
+// "Open in Graphiti" only makes sense for a genuine equation (not a bare expression, and not an
+// inequality) whose free variables are entirely the cartesian x/y pair or entirely the polar
+// r/theta pair - anything else (extra parameters, mismatched variables, etc.) isn't something
+// Graphiti's plotter can do anything useful with.
+const GRAPHITI_CARTESIAN_VARS = new Set(['x', 'y']);
+const GRAPHITI_POLAR_VARS = new Set(['r', 'theta']);
+function graphitiModeFor(latex) {
+  if (!latex || !latex.trim()) return null;
+  let unknowns;
+  try {
+    if (!isHeaded(latex, 'Equal')) return null;
+    unknowns = freeVariablesOf(latex);
+  } catch {
+    return null;
+  }
+  if (unknowns.length === 0) return null;
+  if (unknowns.every((v) => GRAPHITI_CARTESIAN_VARS.has(v))) return 'cartesian';
+  if (unknowns.every((v) => GRAPHITI_POLAR_VARS.has(v))) return 'polar';
+  return null;
+}
+
+// Graphiti reads its shared-graph state from a "#v=" URL fragment: an LZString-compressed JSON
+// blob containing one function entry plus which mode (cartesian/polar) to plot it in - see
+// loadLZString for why the compression library itself is loaded lazily rather than up front.
+function buildGraphitiUrl(LZString, latex, mode) {
+  const state = {
+    v: 1,
+    functions: [{ id: 1, expression: latex, color: '#4A90E2', enabled: true }],
+    mode,
+  };
+  const compressed = LZString.compressToEncodedURIComponent(JSON.stringify(state));
+  return `https://www.korovatron.co.uk/graphiti/#v=${compressed}`;
+}
+
+// Loaded on demand (only once "Open in Graphiti" is actually used) rather than unconditionally
+// up front - mirrors loadMathJax below. Pinned to the exact same version and CDN Graphiti itself
+// loads (see sw.js for the matching cached URL), so the compressed state format is guaranteed to
+// round-trip through its decoder unchanged.
+let lzStringReadyPromise = null;
+function loadLZString() {
+  if (!lzStringReadyPromise) {
+    lzStringReadyPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js';
+      script.onload = () => resolve(window.LZString);
+      script.onerror = () => reject(new Error('Could not load LZString.'));
+      document.head.appendChild(script);
+    });
+  }
+  return lzStringReadyPromise;
+}
+
 // Compute Engine's handling of equations is inconsistent between free functions - expand()
 // recurses into both sides of an Equal relation, but simplify()/factor()/etc. do not, leaving
 // the equation untouched. Apply algebra operations to each side independently so the result is
@@ -829,6 +903,42 @@ function resolveLabel(item) {
   return typeof item?.label === 'function' ? item.label() : item?.label;
 }
 
+// Line-style icons (24x24, stroke=currentColor) for the menu's common, universally-recognisable
+// actions, matching the header hamburger menu's own icon style (see header-menu-icon in
+// index.html) - deliberately not attempted for the math operations themselves (Simplify, Factor,
+// Differentiate, etc.), which have no similarly obvious one-glyph icon; their rows still line up
+// with every other row via the same reserved icon slot (see createMenuIconSlot), just left empty.
+const MENU_ICON_CUT =
+  '<svg class="morph-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.4" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="6" cy="18" r="2.4" fill="none" stroke="currentColor" stroke-width="1.8"/><line x1="8" y1="7.6" x2="20" y2="19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><line x1="8" y1="16.4" x2="20" y2="5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+const MENU_ICON_COPY =
+  '<svg class="morph-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M15.5 8.5V6A1.5 1.5 0 0 0 14 4.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const MENU_ICON_PASTE =
+  '<svg class="morph-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="4" width="13" height="17" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="9" y="2.3" width="6" height="3" rx="0.9" fill="none" stroke="currentColor" stroke-width="1.8"/><line x1="8" y1="11" x2="16" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="8" y1="15" x2="16" y2="15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+const MENU_ICON_IMAGE =
+  '<svg class="morph-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="8.3" cy="9.3" r="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4.5 16.5l4.5-4.5 3.3 3.3 2.4-2.4 4.3 4.3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const MENU_ICON_DOWNLOAD =
+  '<svg class="morph-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v10.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M7.5 10.5 12 15l4.5-4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 16.5v3a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const MENU_ICON_PLUS =
+  '<svg class="morph-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+const MENU_ICON_FOLDER =
+  '<svg class="morph-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5A1.5 1.5 0 0 1 5 5h4l2 2h8a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5v-11z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+const MENU_ICON_SAVE =
+  '<svg class="morph-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h12a1 1 0 0 1 1 1V21l-7-4-7 4V4.5a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+const MENU_ICON_MODE =
+  '<svg class="morph-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="8.5" width="18" height="7" rx="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="16" cy="12" r="2.4" fill="currentColor"/></svg>';
+const GRAPHITI_MENU_ICON = '<img src="images/graphitiLogo.png" alt="" class="morph-menu-icon" />';
+
+// Every menu row reserves this same slot before its label - whether or not it actually has an
+// icon - so every row lines up at a consistent indent regardless of which ones do (matching the
+// header hamburger menu's look). `icon` is a ready-made HTML string (one of the MENU_ICON_*
+// constants above, or GRAPHITI_MENU_ICON), or omitted/falsy to leave the slot visually empty.
+function createMenuIconSlot(icon) {
+  const span = document.createElement('span');
+  span.className = 'morph-menu-icon-slot';
+  if (icon) span.innerHTML = icon;
+  return span;
+}
+
 function addMenuDivider(menu) {
   const li = document.createElement('li');
   li.setAttribute('role', 'none');
@@ -836,7 +946,8 @@ function addMenuDivider(menu) {
   menu.appendChild(li);
 }
 
-function addMenuButton(menu, label, onActivate, title) {
+// icon optionally renders a small icon (see createMenuIconSlot) before the label text.
+function addMenuButton(menu, label, onActivate, title, icon) {
   const li = document.createElement('li');
   li.setAttribute('role', 'none');
   const button = document.createElement('button');
@@ -844,7 +955,8 @@ function addMenuButton(menu, label, onActivate, title) {
   button.className = 'morph-menu-item';
   button.setAttribute('role', 'menuitem');
   if (title) button.title = title;
-  button.textContent = label;
+  button.appendChild(createMenuIconSlot(icon));
+  button.appendChild(document.createTextNode(label));
   button.addEventListener('click', () => {
     onActivate();
     closeFieldMenu();
@@ -856,15 +968,16 @@ function addMenuButton(menu, label, onActivate, title) {
 
 // An inline, click-to-expand submenu (rather than MathLive's hover-to-open flyouts, which is
 // exactly the interaction pattern its own nested menus get stuck on) - items: {label, onActivate},
-// optionally {html: true} to render a raw HTML label (for the math template previews reused from
-// MathLive's own "Insert" menu) instead of plain text, {heading: 'Section title'} for a
+// optionally {icon} (see createMenuIconSlot), {html: true} to render a raw HTML label (for the
+// math template previews reused from MathLive's own "Insert" menu) instead of plain text - these
+// already carry their own visual, so never get an icon slot - {heading: 'Section title'} for a
 // non-interactive section label splitting up a long list of items (also borrowed from there),
 // {submenu: [...]} to nest another expandable level (e.g. Differentiate/Integrate/Solve, when a
 // selection has more than one candidate variable to pick from), {divider: true} for a plain
 // separator line, or {widget: (ul) => void} to append arbitrary custom content (e.g. the matrix
 // size picker grid) instead of a standard item - title sets a tooltip on this submenu's own
-// toggle button.
-function addSubmenu(menu, label, items, title) {
+// toggle button, and icon likewise optionally gives the toggle button itself an icon.
+function addSubmenu(menu, label, items, title, icon) {
   const li = document.createElement('li');
   li.setAttribute('role', 'none');
 
@@ -875,7 +988,8 @@ function addSubmenu(menu, label, items, title) {
   toggle.setAttribute('aria-haspopup', 'true');
   toggle.setAttribute('aria-expanded', 'false');
   if (title) toggle.title = title;
-  toggle.textContent = label;
+  toggle.appendChild(createMenuIconSlot(icon));
+  toggle.appendChild(document.createTextNode(label));
 
   const submenu = document.createElement('ul');
   submenu.className = 'morph-submenu';
@@ -908,7 +1022,7 @@ function addSubmenu(menu, label, items, title) {
     }
 
     if (item.submenu) {
-      addSubmenu(submenu, item.label, item.submenu, item.description);
+      addSubmenu(submenu, item.label, item.submenu, item.description, item.icon);
       continue;
     }
 
@@ -919,8 +1033,17 @@ function addSubmenu(menu, label, items, title) {
     subButton.setAttribute('role', 'checked' in item ? 'menuitemradio' : 'menuitem');
     if ('checked' in item) subButton.setAttribute('aria-checked', String(Boolean(item.checked)));
     if (item.description) subButton.title = item.description;
-    if (item.html) subButton.innerHTML = item.label;
-    else subButton.textContent = item.label;
+    if (item.html) {
+      // Already carries its own visual (a rendered math preview) - no icon slot needed.
+      subButton.innerHTML = item.label;
+    } else if ('checked' in item) {
+      // Uses the tick-mark-on-the-left mechanism (see morph-submenu-checkable in style.css)
+      // instead of an icon slot, so the two don't stack into a doubly-indented row.
+      subButton.textContent = item.label;
+    } else {
+      subButton.appendChild(createMenuIconSlot(item.icon));
+      subButton.appendChild(document.createTextNode(item.label));
+    }
     subButton.addEventListener('click', () => {
       item.onActivate();
       closeFieldMenu();
@@ -1216,7 +1339,7 @@ function openFieldMenu(field, x, y) {
 
     // Cutting the whole field with nothing selected would be a surprisingly destructive
     // default, so (unlike Copy/Copy special below) Cut stays limited to an actual selection.
-    addMenuButton(fieldMenu, 'Cut', () => native.cut?.onMenuSelect());
+    addMenuButton(fieldMenu, 'Cut', () => native.cut?.onMenuSelect(), undefined, MENU_ICON_CUT);
   }
 
   // MathLive's own Copy/Copy special commands act on whatever is currently selected - with
@@ -1224,8 +1347,12 @@ function openFieldMenu(field, x, y) {
   // entirely in that case. Falling back to the whole field instead (like Export already does
   // below) is far more useful: temporarily select everything so those commands have something
   // to act on, then restore the original cursor position afterwards.
-  addMenuButton(fieldMenu, 'Copy', () =>
-    withWholeFieldSelectionIfNeeded(field, Boolean(selectionLatex), () => field.executeCommand('copyToClipboard')),
+  addMenuButton(
+    fieldMenu,
+    'Copy',
+    () => withWholeFieldSelectionIfNeeded(field, Boolean(selectionLatex), () => field.executeCommand('copyToClipboard')),
+    undefined,
+    MENU_ICON_COPY,
   );
   addSubmenu(
     fieldMenu,
@@ -1241,33 +1368,42 @@ function openFieldMenu(field, x, y) {
           }),
       };
     }),
+    undefined,
+    MENU_ICON_COPY,
   );
   addMenuDivider(fieldMenu);
 
   const exportItem = buildExportMenu(field);
-  for (const exp of exportItem.submenu) addMenuButton(fieldMenu, exp.label, () => exp.onMenuSelect());
+  for (const exp of exportItem.submenu) addMenuButton(fieldMenu, exp.label, () => exp.onMenuSelect(), undefined, exp.icon);
   addMenuDivider(fieldMenu);
 
-  addMenuButton(fieldMenu, 'Paste', () => native.paste?.onMenuSelect());
+  addMenuButton(fieldMenu, 'Paste', () => native.paste?.onMenuSelect(), undefined, MENU_ICON_PASTE);
   addMenuDivider(fieldMenu);
 
-  addSubmenu(fieldMenu, 'Insert', [
-    { widget: (ul) => addMatrixPicker(ul, field, native.insertMatrix) },
-    { divider: true },
-    ...native.insertTemplates.map((item) =>
-      item.type === 'heading'
-        ? { heading: resolveLabel(item) }
-        : { label: resolveLabel(item), html: true, onActivate: () => item.onMenuSelect() },
-    ),
-  ]);
+  addSubmenu(
+    fieldMenu,
+    'Insert',
+    [
+      { widget: (ul) => addMatrixPicker(ul, field, native.insertMatrix) },
+      { divider: true },
+      ...native.insertTemplates.map((item) =>
+        item.type === 'heading'
+          ? { heading: resolveLabel(item) }
+          : { label: resolveLabel(item), html: true, onActivate: () => item.onMenuSelect() },
+      ),
+    ],
+    undefined,
+    MENU_ICON_PLUS,
+  );
   addMenuDivider(fieldMenu);
 
-  addSubmenu(fieldMenu, 'Insert snippet', buildInsertSnippetItems(field));
+  addSubmenu(fieldMenu, 'Insert snippet', buildInsertSnippetItems(field), undefined, MENU_ICON_FOLDER);
   addMenuButton(
     fieldMenu,
     'Save as snippet\u2026',
     () => openSaveSnippetDialog(selectionLatex || field.value),
     'Save the selection (or the whole field, if nothing is selected) as a reusable named snippet.',
+    MENU_ICON_SAVE,
   );
   addMenuDivider(fieldMenu);
 
@@ -1279,6 +1415,8 @@ function openFieldMenu(field, x, y) {
       checked: typeof mode.checked === 'function' ? mode.checked() : Boolean(mode.checked),
       onActivate: () => mode.onMenuSelect(),
     })),
+    undefined,
+    MENU_ICON_MODE,
   );
 
   fieldMenu.hidden = false;
@@ -1409,49 +1547,89 @@ function downloadFile(filename, content, mimeType) {
 function buildExportMenu(field) {
   const latexForExport = () => selectionLatexFor(field) || field.value;
 
-  return {
-    label: 'Export',
-    submenu: [
-      {
-        label: 'Copy as PNG',
-        onMenuSelect: async () => {
-          const latex = latexForExport();
-          if (!latex || !latex.trim()) {
-            showStatus('Nothing to export.', true);
-            return;
-          }
-          try {
-            const blob = await latexToPngBlob(latex);
-            await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-            showStatus('Copied as an image.', false);
-            trackGoatCounterEvent('Mathamorph - PNG exported');
-          } catch (err) {
-            console.error(err);
-            showStatus('Could not copy as an image.', true);
-          }
-        },
+  const items = [
+    {
+      label: 'Copy as PNG',
+      icon: MENU_ICON_IMAGE,
+      onMenuSelect: async () => {
+        const latex = latexForExport();
+        if (!latex || !latex.trim()) {
+          showStatus('Nothing to export.', true);
+          return;
+        }
+        try {
+          const blob = await latexToPngBlob(latex);
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+          showStatus('Copied as an image.', false);
+          trackGoatCounterEvent('Mathamorph - PNG exported');
+        } catch (err) {
+          console.error(err);
+          showStatus('Could not copy as an image.', true);
+        }
       },
-      {
-        label: 'Download as SVG',
-        onMenuSelect: async () => {
-          const latex = latexForExport();
-          if (!latex || !latex.trim()) {
-            showStatus('Nothing to export.', true);
-            return;
-          }
-          try {
-            const { svg } = await latexToSvg(latex);
-            downloadFile('mathamorph.svg', serializeSvg(svg), 'image/svg+xml');
-            showStatus('Downloaded as SVG.', false);
-            trackGoatCounterEvent('Mathamorph - SVG exported');
-          } catch (err) {
-            console.error(err);
-            showStatus('Could not export as SVG.', true);
-          }
-        },
+    },
+    {
+      label: 'Download as SVG',
+      icon: MENU_ICON_DOWNLOAD,
+      onMenuSelect: async () => {
+        const latex = latexForExport();
+        if (!latex || !latex.trim()) {
+          showStatus('Nothing to export.', true);
+          return;
+        }
+        try {
+          const { svg } = await latexToSvg(latex);
+          downloadFile('mathamorph.svg', serializeSvg(svg), 'image/svg+xml');
+          showStatus('Downloaded as SVG.', false);
+          trackGoatCounterEvent('Mathamorph - SVG exported');
+        } catch (err) {
+          console.error(err);
+          showStatus('Could not export as SVG.', true);
+        }
       },
-    ],
-  };
+    },
+  ];
+
+  // Only offered when the exportable LaTeX (selection, or the whole field) is actually a
+  // plottable equation - see graphitiModeFor for exactly what that means.
+  const graphitiMode = graphitiModeFor(latexForExport());
+  if (graphitiMode) {
+    // Kick the (tiny) LZString load off now, while the menu is open, so it's normally already
+    // resolved by the time this item is actually clicked - see below for why that matters.
+    loadLZString().catch(() => {});
+    items.push({
+      label: 'Open in Graphiti\u2026',
+      icon: GRAPHITI_MENU_ICON,
+      onMenuSelect: () => {
+        const latex = latexForExport();
+        // The tab has to be opened synchronously, right from this click, or most browsers'
+        // popup blockers silently swallow it - awaiting LZString first and only then calling
+        // window.open() would be too late. Opening it blank now and navigating it once the
+        // compressed state is ready keeps the gesture synchronous either way.
+        const graphitiTab = window.open('', '_blank');
+        if (!graphitiTab) {
+          showStatus('Please allow pop-ups to open in Graphiti.', true);
+          return;
+        }
+        graphitiTab.opener = null;
+        // See fieldToRecoverOnRefocus's own comment (near scratchField, at the top of this
+        // file) for why this field specifically needs recovering once the user comes back.
+        fieldToRecoverOnRefocus = field;
+        loadLZString()
+          .then((LZString) => {
+            graphitiTab.location.href = buildGraphitiUrl(LZString, latex, graphitiMode);
+            trackGoatCounterEvent('Mathamorph - opened in Graphiti');
+          })
+          .catch((err) => {
+            console.error(err);
+            graphitiTab.close();
+            showStatus('Could not open in Graphiti.', true);
+          });
+      },
+    });
+  }
+
+  return { label: 'Export', submenu: items };
 }
 
 // The Insert Matrix size-picker grid highlights its drag-preview cells via an internal
@@ -1652,6 +1830,11 @@ aboutDialog.innerHTML = `
     Export clean results as <strong>PNG, SVG, or LaTeX</strong>, making it effortless to build
     worksheets and presentations in less time. Mathamorph turns equation building into a creative,
     time-saving flow for teachers and creators who need results fast.
+  </p>
+  <p class="about-description">
+    Equations in x/y or r/&theta; can also be sent straight to
+    <a href="https://www.korovatron.co.uk/graphiti/" target="_blank" rel="noopener noreferrer">Graphiti</a>,
+    our companion graphing calculator, for plotting.
   </p>
   <p class="about-copyright">&copy; 2026 Neil Kendall</p>
   <p class="about-link">
