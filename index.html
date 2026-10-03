@@ -231,10 +231,13 @@
   </header>
 
   <main>
-    <p class="hint">
-      Select part of an equation, then right-click for options like
-      Simplify, Solve, Differentiate, exporting as PNG or SVG, and
-      opening x/y or r/&theta; equations straight into Graphiti.
+    <p class="hint" title="Type an equation, then right-click it or a selected part to open the menu. Morphing means manipulating the maths: simplify, solve, expand, factorise, differentiate or integrate. You can also export as PNG, SVG or LaTeX, or open x/y and r/&#952; equations in Graphiti to plot them.">
+      <svg class="hint-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 3a7 7 0 0 1 7 7v2h-7z" fill="currentColor" />
+        <rect x="5" y="3" width="14" height="18" rx="7" fill="none" stroke="currentColor" stroke-width="1.8" />
+        <path d="M12 3v9M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" />
+      </svg>
+      <span>Enter an equation. Right-click to <strong class="hint-morph"><em>morph</em></strong>, export or graph.</span>
     </p>
 
     <div class="document" id="document"></div>

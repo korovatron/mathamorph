@@ -336,9 +336,23 @@ main {
 }
 
 .hint {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: 1.1rem;
+  line-height: 1.5;
   margin-top: 0;
+}
+
+.hint-icon {
+  flex: none;
+  width: 1.5em;
+  height: 1.5em;
+}
+
+.hint-morph {
+  color: var(--title-morph);
 }
 
 math-field {
