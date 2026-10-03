@@ -179,6 +179,29 @@ function createLine(initialLatex) {
     '<line x1="4" y1="4" x2="20" y2="20"/><line x1="20" y1="4" x2="4" y2="20"/></svg>';
   deleteBtn.addEventListener('click', () => removeLine(line));
 
+  // MathLive's own virtual keyboard toggle button works fine on desktop, but since its touch
+  // behaviour has proven unreliable enough elsewhere to replace (see the menu button below),
+  // it's replaced here too - on both desktop and touch - so this app no longer depends on
+  // MathLive's own in-field buttons at all, and isn't at the mercy of their behaviour changing.
+  const keyboardBtn = document.createElement('button');
+  keyboardBtn.type = 'button';
+  keyboardBtn.className = 'keyboard-toggle-btn';
+  keyboardBtn.setAttribute('aria-label', 'Toggle virtual keyboard');
+  keyboardBtn.innerHTML =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+    '<rect x="2.5" y="6" width="19" height="12" rx="1.8"/>' +
+    '<line x1="5.5" y1="9.5" x2="5.5" y2="9.5" stroke-width="2.4"/>' +
+    '<line x1="9" y1="9.5" x2="9" y2="9.5" stroke-width="2.4"/>' +
+    '<line x1="12.5" y1="9.5" x2="12.5" y2="9.5" stroke-width="2.4"/>' +
+    '<line x1="16" y1="9.5" x2="16" y2="9.5" stroke-width="2.4"/>' +
+    '<line x1="19.5" y1="9.5" x2="19.5" y2="9.5" stroke-width="2.4"/>' +
+    '<line x1="7" y1="14.5" x2="17" y2="14.5"/></svg>';
+  keyboardBtn.addEventListener('click', () => {
+    activeMathField = field;
+    field.focus();
+    field.executeCommand('toggleVirtualKeyboard');
+  });
+
   // MathLive's touch handling is unreliable enough (long-press doesn't reach a "contextmenu"
   // event, and in practice doesn't reliably trigger a long-press gesture at all) that fighting
   // it isn't worth it - instead, touch devices get this dedicated button (hidden on desktop via
@@ -199,7 +222,7 @@ function createLine(initialLatex) {
     openFieldMenu(field, rect.left, rect.bottom);
   });
 
-  actions.append(deleteBtn, menuBtn);
+  actions.append(deleteBtn, keyboardBtn, menuBtn);
   line.append(field, actions);
 
   field.addEventListener('focus', () => {

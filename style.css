@@ -350,19 +350,11 @@ math-field::part(menu-toggle) {
 }
 
 /* Our own right-click menu fully replaces MathLive's own field menu (see openFieldMenu in
-   app.js), so hide its now-unused toggle button. */
-math-field::part(menu-toggle) {
+   app.js), and our own keyboard-toggle-btn/field-menu-btn (below .doc-line) fully replace its
+   virtual keyboard toggle - hide both of MathLive's now-unused in-field buttons. */
+math-field::part(menu-toggle),
+math-field::part(virtual-keyboard-toggle) {
   display: none;
-}
-
-/* MathLive's virtual keyboard toggle button works fine with a mouse, but on touch devices it's
-   unreliable (a tap to close it immediately reopens it) - and it's unnecessary there anyway,
-   since tapping into a field already auto-opens the virtual keyboard, and tapping outside the
-   field closes it correctly. Hide the toggle whenever touch is the primary input. */
-@media (hover: none) and (pointer: coarse) {
-  math-field::part(virtual-keyboard-toggle) {
-    display: none;
-  }
 }
 
 math-field::part(menu-item):hover {
@@ -399,6 +391,7 @@ math-field::part(menu-item):hover {
 }
 
 .doc-line .delete-line,
+.doc-line .keyboard-toggle-btn,
 .doc-line .field-menu-btn {
   flex: none;
   width: 1.75rem;
@@ -415,6 +408,7 @@ math-field::part(menu-item):hover {
 }
 
 .doc-line .delete-line svg,
+.doc-line .keyboard-toggle-btn svg,
 .doc-line .field-menu-btn svg {
   width: 65%;
   height: 65%;
@@ -426,19 +420,25 @@ math-field::part(menu-item):hover {
   color: #ffffff;
 }
 
+.doc-line .keyboard-toggle-btn:hover,
 .doc-line .field-menu-btn:hover {
   background: var(--field-border-focus);
   border-color: var(--field-border-focus);
   color: #ffffff;
 }
 
-/* This button is a touch-device fallback for opening the field menu (see createLine in app.js)
-   - on desktop, right-click already does the job, so keep it out of the way there. */
+/* Our own replacements for MathLive's in-field buttons: the keyboard toggle for desktop/mouse
+   use, and the menu button as a touch-device fallback for opening the field menu (see
+   createLine in app.js) - right-click already does that job on desktop. */
 .doc-line .field-menu-btn {
   display: none;
 }
 
 @media (hover: none) and (pointer: coarse) {
+  .doc-line .keyboard-toggle-btn {
+    display: none;
+  }
+
   .doc-line .field-menu-btn {
     display: inline-flex;
   }
