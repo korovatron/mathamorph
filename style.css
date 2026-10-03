@@ -733,8 +733,9 @@ math-field::part(menu-item):hover {
 
 .about-copyright {
   margin: 0 0 0.25rem;
-  color: var(--text-muted);
+  color: #ffffff;
   font-size: 0.85rem;
+  font-weight: bold;
 }
 
 .about-link {
