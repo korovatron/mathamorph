@@ -536,10 +536,22 @@ const UNRESOLVED_MATRIX_HEADS = new Set([
   'Eigenvectors',
 ]);
 
-function isUnresolved(result) {
-  if (Array.isArray(result)) return result.some(isUnresolved);
+function isUnresolvedMatrixOp(result) {
+  if (Array.isArray(result)) return result.some(isUnresolvedMatrixOp);
   const json = result && result.json;
   return Array.isArray(json) && UNRESOLVED_MATRIX_HEADS.has(json[0]);
+}
+
+// Compute Engine doesn't throw for LaTeX it can't parse (e.g. notation it doesn't support, like
+// "\bigm|" for evaluating at a point) - it embeds an ["Error", ...] node in the result's JSON
+// instead, anywhere in the tree, and happily serializes that back out as valid-looking LaTeX
+// (MathLive's own "\error{...}" marker) that isWellFormedLatex() below doesn't catch either,
+// since showing an error marker isn't itself a MathLive parse error. Left undetected, that
+// literal "\error{...}" markup would otherwise silently overwrite the user's original selection.
+function containsErrorNode(json) {
+  if (!Array.isArray(json)) return false;
+  if (json[0] === 'Error') return true;
+  return json.some(containsErrorNode);
 }
 
 function runOperation(compute) {
@@ -559,11 +571,16 @@ function runOperation(compute) {
     return;
   }
 
-  if (isUnresolved(result)) {
+  if (isUnresolvedMatrixOp(result)) {
     showStatus(
       'Could not compute a result - check the matrix is square and, for Inverse, that its determinant is not zero.',
       true,
     );
+    return;
+  }
+
+  if (containsErrorNode(Array.isArray(result) ? result.map((r) => r && r.json) : result && result.json)) {
+    showStatus('Could not understand part of that selection - it may use notation that isn\'t supported.', true);
     return;
   }
 
