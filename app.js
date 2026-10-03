@@ -150,6 +150,24 @@ function restoreSelectionIfNeeded(field) {
   if (cached) field.selection = { ranges: [cached.range] };
 }
 
+// MathLive's own Copy/Copy special commands only ever act on the current selection - with
+// nothing selected, that would silently do nothing. Temporarily selecting the whole field first
+// lets "run" fall back to the whole expression instead, then restores whatever the selection (or
+// collapsed cursor position) was beforehand, so no visible selection is left behind afterwards.
+function withWholeFieldSelectionIfNeeded(field, hasSelection, run) {
+  if (hasSelection) {
+    run();
+    return;
+  }
+  const priorSelection = field.selection;
+  field.executeCommand('selectAll');
+  try {
+    run();
+  } finally {
+    field.selection = priorSelection;
+  }
+}
+
 function replaceSelection(latex) {
   activeMathField.insert(latex, {
     insertionMode: 'replaceSelection',
@@ -1096,24 +1114,35 @@ function openFieldMenu(field, x, y) {
     }
     addMenuDivider(fieldMenu);
 
+    // Cutting the whole field with nothing selected would be a surprisingly destructive
+    // default, so (unlike Copy/Copy special below) Cut stays limited to an actual selection.
     addMenuButton(fieldMenu, 'Cut', () => native.cut?.onMenuSelect());
-    addMenuButton(fieldMenu, 'Copy', () => field.executeCommand('copyToClipboard'));
-    addSubmenu(
-      fieldMenu,
-      'Copy special',
-      native.copyFormats.map((format) => {
-        const label = resolveLabel(format);
-        return {
-          label,
-          onActivate: () => {
+  }
+
+  // MathLive's own Copy/Copy special commands act on whatever is currently selected - with
+  // nothing selected that would silently copy nothing, which is why these used to be hidden
+  // entirely in that case. Falling back to the whole field instead (like Export already does
+  // below) is far more useful: temporarily select everything so those commands have something
+  // to act on, then restore the original cursor position afterwards.
+  addMenuButton(fieldMenu, 'Copy', () =>
+    withWholeFieldSelectionIfNeeded(field, Boolean(selectionLatex), () => field.executeCommand('copyToClipboard')),
+  );
+  addSubmenu(
+    fieldMenu,
+    'Copy special',
+    native.copyFormats.map((format) => {
+      const label = resolveLabel(format);
+      return {
+        label,
+        onActivate: () =>
+          withWholeFieldSelectionIfNeeded(field, Boolean(selectionLatex), () => {
             format.onMenuSelect();
             if (label === 'Copy as LaTeX') trackGoatCounterEvent('Mathamorph - LaTeX exported');
-          },
-        };
-      }),
-    );
-    addMenuDivider(fieldMenu);
-  }
+          }),
+      };
+    }),
+  );
+  addMenuDivider(fieldMenu);
 
   const exportItem = buildExportMenu(field);
   for (const exp of exportItem.submenu) addMenuButton(fieldMenu, exp.label, () => exp.onMenuSelect());
