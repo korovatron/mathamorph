@@ -145,6 +145,7 @@ header h1 .t-morph {
   border-radius: 0.5rem;
   background: var(--field-bg);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  box-sizing: border-box;
 }
 
 .morph-menu[hidden] {
@@ -402,20 +403,6 @@ math-field::part(menu-item):hover {
   color: #ffffff;
 }
 
-.line-actions {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.line-actions .pdf-include {
-  margin: 0;
-  accent-color: var(--field-border-focus);
-  cursor: pointer;
-}
-
 .document-actions {
   display: flex;
   align-items: center;
@@ -437,7 +424,7 @@ math-field::part(menu-item):hover {
   background: var(--control-bg);
 }
 
-.series-dialog {
+.app-dialog {
   padding: 1.25rem;
   border: 1px solid var(--border-strong);
   border-radius: 0.5rem;
@@ -446,16 +433,16 @@ math-field::part(menu-item):hover {
   min-width: 16rem;
 }
 
-.series-dialog::backdrop {
+.app-dialog::backdrop {
   background: rgba(0, 0, 0, 0.5);
 }
 
-.series-dialog h2 {
+.app-dialog h2 {
   margin: 0 0 1rem;
   font-size: 1.05rem;
 }
 
-.series-dialog-field {
+.app-dialog-field {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -463,7 +450,7 @@ math-field::part(menu-item):hover {
   margin-bottom: 0.75rem;
 }
 
-.series-dialog-field input {
+.app-dialog-field input {
   width: 5rem;
   padding: 0.3rem;
   border: 1px solid var(--border-strong);
@@ -473,14 +460,14 @@ math-field::part(menu-item):hover {
   background: var(--control-bg);
 }
 
-.series-dialog-actions {
+.app-dialog-actions {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
   margin-top: 1rem;
 }
 
-.series-dialog-actions button {
+.app-dialog-actions button {
   padding: 0.4rem 0.9rem;
   border: 1px solid var(--border-strong);
   border-radius: 0.4rem;
@@ -489,13 +476,111 @@ math-field::part(menu-item):hover {
   cursor: pointer;
 }
 
-.series-dialog-actions button:hover {
+.app-dialog-actions button:hover {
   background: var(--control-bg);
 }
 
-.series-dialog-actions .series-dialog-compute {
+.app-dialog-actions .app-dialog-primary {
   border-color: var(--field-border-focus);
   background: var(--field-border-focus);
+  color: #ffffff;
+}
+
+/* A snippet's name can be much longer than a single variable/number, so (unlike Series' fields)
+   it gets its own full-width row instead of the compact label-left/input-right layout. */
+.snippet-dialog {
+  min-width: 22rem;
+}
+
+.snippet-dialog .app-dialog-field {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.snippet-dialog .app-dialog-field input {
+  width: 100%;
+  text-align: left;
+}
+
+.manage-snippets-dialog {
+  width: 32rem;
+  max-width: 90vw;
+  max-height: 80vh;
+}
+
+.manage-snippets-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.manage-snippets-list {
+  overflow-y: auto;
+  flex: 1;
+  margin: 0 -0.25rem;
+  padding: 0 0.25rem;
+}
+
+.manage-snippets-empty {
+  color: var(--text-muted);
+  margin: 0;
+  padding: 1rem 0;
+}
+
+.manage-snippet-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.manage-snippet-row:last-child {
+  border-bottom: none;
+}
+
+.manage-snippet-preview {
+  flex: none;
+  width: 9rem;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 0.3rem;
+  background: none;
+  font-size: 0.75rem;
+  pointer-events: none;
+}
+
+.manage-snippet-preview:focus-within {
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+
+.manage-snippet-preview::part(virtual-keyboard-toggle) {
+  display: none;
+}
+
+.manage-snippet-name {
+  flex: 1;
+  min-width: 0;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.3rem;
+  color: var(--text);
+  background: var(--control-bg);
+}
+
+.manage-snippet-delete {
+  flex: none;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.3rem;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.manage-snippet-delete:hover {
+  background: var(--error);
+  border-color: var(--error);
   color: #ffffff;
 }
 

@@ -1,7 +1,5 @@
 import { MathfieldElement } from 'https://unpkg.com/mathlive?module';
 import { ComputeEngine, parse, simplify, expand, factor, solve } from 'https://unpkg.com/@cortex-js/compute-engine?module';
-import { jsPDF } from 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/+esm';
-import { svg2pdf } from 'https://cdn.jsdelivr.net/npm/svg2pdf.js@2/+esm';
 
 const ce = new ComputeEngine();
 
@@ -80,11 +78,6 @@ document.addEventListener('keydown', (ev) => {
 
 const documentEl = document.getElementById('document');
 const addLineBtn = document.getElementById('btn-add-line');
-const exportPdfBtn = document.getElementById('btn-export-pdf');
-const saveDocumentBtn = document.getElementById('save-document');
-const saveDocumentAsBtn = document.getElementById('save-document-as');
-const openDocumentBtn = document.getElementById('open-document');
-const openDocumentInput = document.getElementById('open-document-input');
 const statusEl = document.getElementById('status');
 
 function showStatus(message, isError) {
@@ -148,7 +141,7 @@ function mathFieldIn(lineEl) {
   return lineEl.querySelector('math-field');
 }
 
-// Creates one row of the document: a mathfield plus a delete button and a PDF-include checkbox.
+// Creates one row of the document: a mathfield plus a delete button.
 function createLine(initialLatex) {
   const line = document.createElement('div');
   line.className = 'doc-line';
@@ -165,19 +158,7 @@ function createLine(initialLatex) {
     '<line x1="4" y1="4" x2="20" y2="20"/><line x1="20" y1="4" x2="4" y2="20"/></svg>';
   deleteBtn.addEventListener('click', () => removeLine(line));
 
-  const pdfCheckbox = document.createElement('input');
-  pdfCheckbox.type = 'checkbox';
-  pdfCheckbox.className = 'pdf-include';
-  pdfCheckbox.checked = true;
-  pdfCheckbox.title = 'Include in PDF export';
-  pdfCheckbox.setAttribute('aria-label', 'Include this line in PDF export');
-  pdfCheckbox.addEventListener('change', schedulePersist);
-
-  const actions = document.createElement('div');
-  actions.className = 'line-actions';
-  actions.append(deleteBtn, pdfCheckbox);
-
-  line.append(field, actions);
+  line.append(field, deleteBtn);
 
   field.addEventListener('focus', () => {
     activeMathField = field;
@@ -265,19 +246,15 @@ function removeLine(line) {
 const DOCUMENT_STORAGE_KEY = 'mathamorph-document';
 
 function serializeDocument() {
-  return allLines().map((line) => ({
-    latex: mathFieldIn(line).value,
-    pdfInclude: line.querySelector('.pdf-include').checked,
-  }));
+  return allLines().map((line) => ({ latex: mathFieldIn(line).value }));
 }
 
 // Replaces the whole document with the given lines, keeping at least one (empty) line.
 function buildDocument(entries) {
   documentEl.innerHTML = '';
-  const list = entries && entries.length ? entries : [{ latex: '', pdfInclude: true }];
+  const list = entries && entries.length ? entries : [{ latex: '' }];
   for (const entry of list) {
     const line = createLine(entry.latex || '');
-    line.querySelector('.pdf-include').checked = entry.pdfInclude !== false;
     documentEl.append(line);
   }
   const firstField = mathFieldIn(documentEl.firstElementChild);
@@ -294,103 +271,45 @@ function schedulePersist() {
   }, 400);
 }
 
-const FILE_PICKER_TYPES = [{ description: 'Mathamorph document', accept: { 'application/json': ['.json'] } }];
+const SNIPPETS_STORAGE_KEY = 'mathamorph-snippets';
 
-// Remembers the file last opened/saved (when the File System Access API is available), so a
-// plain "Save" can write straight back to it instead of always prompting like "Save As".
-let currentFileHandle = null;
-
-function applyOpenedDocument(text) {
-  let entries;
+function loadSnippets() {
+  const raw = localStorage.getItem(SNIPPETS_STORAGE_KEY);
+  if (!raw) return [];
   try {
-    entries = JSON.parse(text);
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
   } catch (err) {
     console.error(err);
-    showStatus('That file is not a valid Mathamorph document.', true);
-    return;
-  }
-  buildDocument(entries);
-  localStorage.setItem(DOCUMENT_STORAGE_KEY, JSON.stringify(entries));
-  showStatus('Document opened.', false);
-}
-
-// Replaces the live document with one loaded from disk, overwriting the auto-persisted copy.
-async function openDocument() {
-  if (window.showOpenFilePicker) {
-    let handle;
-    try {
-      [handle] = await window.showOpenFilePicker({ types: FILE_PICKER_TYPES });
-    } catch (err) {
-      if (err.name !== 'AbortError') {
-        console.error(err);
-        showStatus('Could not open that file.', true);
-      }
-      return;
-    }
-    const file = await handle.getFile();
-    applyOpenedDocument(await file.text());
-    currentFileHandle = handle;
-    return;
-  }
-  // Fallback for browsers without the File System Access API: a plain file input can't hand
-  // back a reusable handle, so subsequent "Save" clicks behave like "Save As" instead.
-  openDocumentInput.click();
-}
-
-openDocumentInput.addEventListener('change', () => {
-  const file = openDocumentInput.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => applyOpenedDocument(reader.result);
-  reader.onerror = () => showStatus('Could not read that file.', true);
-  reader.readAsText(file);
-  openDocumentInput.value = '';
-});
-
-// Writes straight back to the last opened/saved file if we have a handle for it, otherwise
-// falls back to "Save As" since there's nowhere else to write to yet.
-async function saveDocument() {
-  if (!currentFileHandle) {
-    await saveDocumentAs();
-    return;
-  }
-  try {
-    const writable = await currentFileHandle.createWritable();
-    await writable.write(JSON.stringify(serializeDocument(), null, 2));
-    await writable.close();
-    showStatus('Document saved.', false);
-  } catch (err) {
-    console.error(err);
-    showStatus('Could not save the document.', true);
+    return [];
   }
 }
 
-// Always asks where to save, and remembers the chosen file for subsequent plain saves.
-// showSaveFilePicker (Chromium) lets the user pick the filename/location; otherwise falls
-// back to a plain anchor download, which always goes to the browser's default downloads folder.
-async function saveDocumentAs() {
-  const json = JSON.stringify(serializeDocument(), null, 2);
-  if (window.showSaveFilePicker) {
-    try {
-      const handle = await window.showSaveFilePicker({
-        suggestedName: 'mathamorph-document.json',
-        types: FILE_PICKER_TYPES,
-      });
-      const writable = await handle.createWritable();
-      await writable.write(json);
-      await writable.close();
-      currentFileHandle = handle;
-      showStatus('Document saved.', false);
-    } catch (err) {
-      if (err.name !== 'AbortError') {
-        console.error(err);
-        showStatus('Could not save the document.', true);
-      }
-    }
-    return;
-  }
-  downloadFile('mathamorph-document.json', json, 'application/json');
-  showStatus('Document saved.', false);
+function saveSnippets(snippets) {
+  localStorage.setItem(SNIPPETS_STORAGE_KEY, JSON.stringify(snippets));
+}
+
+function createSnippetId() {
+  return `snippet-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// `tags` isn't used by any UI yet, but is included from the start so that adding a
+// filter/grouping feature later never needs a data migration - just a UI built on data that's
+// already shaped for it.
+function createSnippet(name, latex, tags = []) {
+  return { id: createSnippetId(), name, latex, tags };
+}
+
+// A brand-new library is an empty, uninviting list with nothing to demonstrate the feature -
+// seed it with a couple of common formulas on the very first run, so there's something useful
+// (and something to learn the UI from) right away. Checked against the raw stored value, not
+// just an empty array, so deliberately deleting every snippet later doesn't bring these back.
+function seedDefaultSnippetsIfNeeded() {
+  if (localStorage.getItem(SNIPPETS_STORAGE_KEY) !== null) return;
+  saveSnippets([
+    createSnippet('Quadratic formula', 'x=\\frac{-b\\pm\\sqrt{b^2-4ac}}{2a}'),
+    createSnippet('Trig identity: 1 + tan\u00b2\u03b8 = sec\u00b2\u03b8', '1+\\tan^2\\theta\\equiv\\sec^2\\theta'),
+  ]);
 }
 
 // On startup, restore the last auto-persisted document if there is one, otherwise show a worked example.
@@ -404,7 +323,7 @@ function initializeDocument() {
       console.error(err);
     }
   }
-  buildDocument(entries && entries.length ? entries : [{ latex: 'x^2 + 2x + 1 = 0', pdfInclude: true }]);
+  buildDocument(entries && entries.length ? entries : [{ latex: 'x^2 + 2x + 1 = 0' }]);
 }
 
 // Free functions like expand()/factor() can return a boxed expression or, occasionally, null.
@@ -695,6 +614,18 @@ function closeFieldMenu() {
   fieldMenu.hidden = true;
 }
 
+// Keeps the menu fully on-screen - needed not just once when it first opens, but every time a
+// submenu toggle changes its rendered height (expanding a long one, like "Insert", can make the
+// whole menu far taller than it was when its position was first computed, pushing its bottom -
+// and the scrollbar needed to reach anything below the fold - off the bottom of the viewport).
+function clampFieldMenuToViewport() {
+  const rect = fieldMenu.getBoundingClientRect();
+  const left = Math.max(8, Math.min(rect.left, window.innerWidth - rect.width - 8));
+  const top = Math.max(8, Math.min(rect.top, window.innerHeight - rect.height - 8));
+  fieldMenu.style.left = `${left}px`;
+  fieldMenu.style.top = `${top}px`;
+}
+
 // Some of MathLive's own menu item labels are lazy getter functions (for localisation)
 // rather than plain strings - resolve either form to display text.
 function resolveLabel(item) {
@@ -730,10 +661,12 @@ function addMenuButton(menu, label, onActivate, title) {
 // exactly the interaction pattern its own nested menus get stuck on) - items: {label, onActivate},
 // optionally {html: true} to render a raw HTML label (for the math template previews reused from
 // MathLive's own "Insert" menu) instead of plain text, {heading: 'Section title'} for a
-// non-interactive section label splitting up a long list of items (also borrowed from there), or
+// non-interactive section label splitting up a long list of items (also borrowed from there),
 // {submenu: [...]} to nest another expandable level (e.g. Differentiate/Integrate/Solve, when a
-// selection has more than one candidate variable to pick from) - title sets a tooltip on this
-// submenu's own toggle button.
+// selection has more than one candidate variable to pick from), {divider: true} for a plain
+// separator line, or {widget: (ul) => void} to append arbitrary custom content (e.g. the matrix
+// size picker grid) instead of a standard item - title sets a tooltip on this submenu's own
+// toggle button.
 function addSubmenu(menu, label, items, title) {
   const li = document.createElement('li');
   li.setAttribute('role', 'none');
@@ -756,12 +689,23 @@ function addSubmenu(menu, label, items, title) {
   if (items.some((item) => 'checked' in item)) submenu.classList.add('morph-submenu-checkable');
 
   for (const item of items) {
+    if (item.widget) {
+      item.widget(submenu);
+      continue;
+    }
+
     const subLi = document.createElement('li');
     subLi.setAttribute('role', 'none');
 
     if (item.heading) {
       subLi.className = 'morph-submenu-heading';
       subLi.textContent = item.heading;
+      submenu.appendChild(subLi);
+      continue;
+    }
+
+    if (item.divider) {
+      subLi.className = 'morph-menu-divider';
       submenu.appendChild(subLi);
       continue;
     }
@@ -799,6 +743,7 @@ function addSubmenu(menu, label, items, title) {
     }
     submenu.hidden = !willOpen;
     toggle.setAttribute('aria-expanded', String(willOpen));
+    clampFieldMenuToViewport();
   });
 
   li.append(toggle, submenu);
@@ -849,25 +794,25 @@ function addMatrixPicker(menu, field, insertMatrixItems) {
 // submenu doesn't fit it as well - it always opens this small dialog instead, pre-filled with
 // sensible defaults (the detected variable, about 0, order 4) that can be overridden.
 const seriesDialog = document.createElement('dialog');
-seriesDialog.className = 'series-dialog';
+seriesDialog.className = 'app-dialog series-dialog';
 seriesDialog.innerHTML = `
   <form method="dialog">
     <h2>Series</h2>
-    <div class="series-dialog-field">
+    <div class="app-dialog-field">
       <label for="series-dialog-variable">Variable</label>
       <input id="series-dialog-variable" type="text" />
     </div>
-    <div class="series-dialog-field">
+    <div class="app-dialog-field">
       <label for="series-dialog-about">About</label>
       <input id="series-dialog-about" type="text" />
     </div>
-    <div class="series-dialog-field">
+    <div class="app-dialog-field">
       <label for="series-dialog-order" title="The highest power of the variable to expand up to - not a count of terms, since some powers may not appear (e.g. a series with only odd powers).">Order</label>
       <input id="series-dialog-order" type="text" />
     </div>
-    <div class="series-dialog-actions">
+    <div class="app-dialog-actions">
       <button type="button" class="series-dialog-cancel">Cancel</button>
-      <button type="submit" value="compute" class="series-dialog-compute">Compute</button>
+      <button type="submit" value="compute" class="app-dialog-primary">Compute</button>
     </div>
   </form>
 `;
@@ -898,6 +843,64 @@ function openSeriesDialog(field, unknowns) {
   seriesDialog.showModal();
   seriesVariableInput.focus();
   seriesVariableInput.select();
+}
+
+// A small dialog, in the same style as the Series one above, that prompts for a name and saves
+// whatever LaTeX was captured when "Save as snippet" was clicked (the selection, or the whole
+// field if nothing was selected) into the snippet library.
+const saveSnippetDialog = document.createElement('dialog');
+saveSnippetDialog.className = 'app-dialog snippet-dialog';
+saveSnippetDialog.innerHTML = `
+  <form method="dialog">
+    <h2>Save as snippet</h2>
+    <div class="app-dialog-field">
+      <label for="snippet-dialog-name">Name</label>
+      <input id="snippet-dialog-name" type="text" autocomplete="off" required />
+    </div>
+    <div class="app-dialog-actions">
+      <button type="button" class="snippet-dialog-cancel">Cancel</button>
+      <button type="submit" value="save" class="app-dialog-primary">Save</button>
+    </div>
+  </form>
+`;
+document.body.appendChild(saveSnippetDialog);
+const snippetNameInput = saveSnippetDialog.querySelector('#snippet-dialog-name');
+saveSnippetDialog.querySelector('.snippet-dialog-cancel').addEventListener('click', () => saveSnippetDialog.close('cancel'));
+
+let snippetLatexToSave = null;
+saveSnippetDialog.addEventListener('close', () => {
+  if (saveSnippetDialog.returnValue !== 'save') return;
+  const name = snippetNameInput.value.trim();
+  if (!name || !snippetLatexToSave) return;
+  saveSnippets([...loadSnippets(), createSnippet(name, snippetLatexToSave)]);
+  showStatus(`Saved "${name}" as a snippet.`, false);
+});
+
+function openSaveSnippetDialog(latex) {
+  if (!latex || !latex.trim()) {
+    showStatus('Nothing to save - select something, or make sure the field has content.', true);
+    return;
+  }
+  snippetLatexToSave = latex;
+  saveSnippetDialog.returnValue = '';
+  snippetNameInput.value = '';
+  saveSnippetDialog.showModal();
+  snippetNameInput.focus();
+}
+
+// Builds the "Insert snippet" submenu's items for the current field - always available (like
+// Insert Matrix/Insert Template), since inserting one doesn't depend on anything being selected.
+function buildInsertSnippetItems(field) {
+  const snippets = loadSnippets();
+  if (snippets.length === 0) return [{ heading: 'No snippets saved yet' }];
+  return snippets.map((snippet) => ({
+    label: snippet.name,
+    description: snippet.latex,
+    onActivate: () => {
+      activeMathField = field;
+      field.insert(snippet.latex, { format: 'latex' });
+    },
+  }));
 }
 
 // Builds the {label, description, onActivate} (or {..., submenu}) descriptor for one operation's
@@ -999,17 +1002,23 @@ function openFieldMenu(field, x, y) {
   addMenuButton(fieldMenu, 'Paste', () => native.paste?.onMenuSelect());
   addMenuDivider(fieldMenu);
 
-  addMatrixPicker(fieldMenu, field, native.insertMatrix);
-  addMenuDivider(fieldMenu);
-
-  addSubmenu(
-    fieldMenu,
-    'Insert',
-    native.insertTemplates.map((item) =>
+  addSubmenu(fieldMenu, 'Insert', [
+    { widget: (ul) => addMatrixPicker(ul, field, native.insertMatrix) },
+    { divider: true },
+    ...native.insertTemplates.map((item) =>
       item.type === 'heading'
         ? { heading: resolveLabel(item) }
         : { label: resolveLabel(item), html: true, onActivate: () => item.onMenuSelect() },
     ),
+  ]);
+  addMenuDivider(fieldMenu);
+
+  addSubmenu(fieldMenu, 'Insert snippet', buildInsertSnippetItems(field));
+  addMenuButton(
+    fieldMenu,
+    'Save as snippet\u2026',
+    () => openSaveSnippetDialog(selectionLatex || field.value),
+    'Save the selection (or the whole field, if nothing is selected) as a reusable named snippet.',
   );
   addMenuDivider(fieldMenu);
 
@@ -1024,12 +1033,12 @@ function openFieldMenu(field, x, y) {
   );
 
   fieldMenu.hidden = false;
-  // Clamp position so the menu doesn't spill off the right/bottom edge of the viewport.
-  const rect = fieldMenu.getBoundingClientRect();
-  const left = Math.max(8, Math.min(x, window.innerWidth - rect.width - 8));
-  const top = Math.max(8, Math.min(y, window.innerHeight - rect.height - 8));
-  fieldMenu.style.left = `${left}px`;
-  fieldMenu.style.top = `${top}px`;
+  // Clamp position so the menu doesn't spill off the right/bottom edge of the viewport - shared
+  // with the submenu toggles below, since expanding one can change the menu's height just as
+  // much as it varies by selection here.
+  fieldMenu.style.left = `${x}px`;
+  fieldMenu.style.top = `${y}px`;
+  clampFieldMenuToViewport();
 }
 
 // Capture phase, since clicks inside the math-field's own shadow DOM get stopped there before
@@ -1065,9 +1074,8 @@ function installFieldMenu(field) {
 }
 
 // MathJax's SVG output renders every glyph as real <path> vector data (no fonts/foreignObject
-// to embed), so exports stay crisp at any zoom and can be embedded as genuine vector paths in
-// a PDF via svg2pdf.js - unlike MathLive's own rendering, which is just painted pixels by the
-// time anything outside the page tries to capture it.
+// to embed), so exports stay crisp at any zoom - unlike MathLive's own rendering, which is just
+// painted pixels by the time anything outside the page tries to capture it.
 let mathJaxReadyPromise = null;
 function loadMathJax() {
   if (!mathJaxReadyPromise) {
@@ -1098,16 +1106,7 @@ async function latexToSvg(latex, em = 18) {
   svg.removeAttribute('focusable');
   svg.removeAttribute('aria-hidden');
   const g = svg.querySelector('g');
-  if (g) {
-    // A pure fill renders too faint at small sizes in some PDF viewers (generic vector paths
-    // don't get the hinting/stem-darkening treatment real embedded PDF text gets), but the
-    // default stroke width (previously just "stroke: black" with no explicit width) rendered
-    // too heavy once zoomed out to see the whole page. This is a deliberately small, explicit
-    // compromise - thin enough to stay crisp zoomed in, present enough to stay visible zoomed out.
-    g.setAttribute('fill', 'black');
-    g.setAttribute('stroke', 'black');
-    g.setAttribute('stroke-width', '30');
-  }
+  if (g) g.setAttribute('fill', 'black');
 
   const width = parseFloat(svg.getAttribute('width')) * ex;
   const height = parseFloat(svg.getAttribute('height')) * ex;
@@ -1249,84 +1248,129 @@ addLineBtn.addEventListener('click', () => {
   insertLineAfter(lines[lines.length - 1]);
 });
 
-// Renders each checked line's equation to a canvas (reusing the same pipeline as "Copy as
-// PNG") and stacks them top-to-bottom into an A4 PDF, paginating as each page fills up.
-async function exportPdf() {
-  const lines = allLines().filter((line) => line.querySelector('.pdf-include').checked);
-  const withContent = lines.filter((line) => mathFieldIn(line).value.trim());
-  if (withContent.length === 0) {
-    showStatus('No lines selected for PDF export.', true);
+const manageSnippetsBtn = document.getElementById('manage-snippets');
+const exportSnippetsBtn = document.getElementById('export-snippets');
+const importSnippetsBtn = document.getElementById('import-snippets');
+const importSnippetsInput = document.getElementById('import-snippets-input');
+
+const manageSnippetsDialog = document.createElement('dialog');
+manageSnippetsDialog.className = 'app-dialog manage-snippets-dialog';
+manageSnippetsDialog.innerHTML = `
+  <h2>Manage snippets</h2>
+  <div class="manage-snippets-list"></div>
+  <div class="app-dialog-actions">
+    <button type="button" class="manage-snippets-close">Close</button>
+  </div>
+`;
+document.body.appendChild(manageSnippetsDialog);
+const manageSnippetsList = manageSnippetsDialog.querySelector('.manage-snippets-list');
+manageSnippetsDialog.querySelector('.manage-snippets-close').addEventListener('click', () => manageSnippetsDialog.close());
+
+// Rebuilt from scratch every time the modal opens (and after every rename/delete) rather than
+// patched in place - the list is short enough that this is simpler than tracking per-row state.
+function renderManageSnippetsList() {
+  const snippets = loadSnippets();
+  manageSnippetsList.innerHTML = '';
+
+  if (snippets.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'manage-snippets-empty';
+    empty.textContent = 'No snippets saved yet - right-click any field and choose "Save as snippet" to add one.';
+    manageSnippetsList.appendChild(empty);
     return;
   }
 
-  exportPdfBtn.disabled = true;
-  showStatus('Building PDF...', false);
-  try {
-    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 48;
-    const maxWidth = pageWidth - margin * 2;
-    const lineGap = 18;
-    const pxToPt = 72 / 96;
-    // Shrinking purely to fit the page width can crush a genuinely extreme, very wide line
-    // (e.g. (a+b)^89 fully expanded) down to a fraction of a point tall and effectively
-    // invisible. Never shrink a line below this fraction of its natural size, accepting that
-    // such lines will instead overflow the page's right-hand margin - this only ever kicks in
-    // for pathologically wide content; ordinary long equations shrink-to-fit as before.
-    const minScale = 0.2;
-    let anyLineOverflowed = false;
-    let y = margin;
+  for (const snippet of snippets) {
+    const row = document.createElement('div');
+    row.className = 'manage-snippet-row';
 
-    for (const line of withContent) {
-      const { svg, width, height } = await latexToSvg(mathFieldIn(line).value);
-      // svg2pdf needs the element connected to the document to measure/render it correctly.
-      document.body.appendChild(svg);
+    // A read-only field reuses MathLive's own rendering to show what the snippet actually
+    // contains, rather than asking the user to recognise it from its name alone.
+    const preview = document.createElement('math-field');
+    preview.className = 'manage-snippet-preview';
+    preview.setAttribute('read-only', '');
+    preview.tabIndex = -1;
+    preview.value = snippet.latex;
 
-      let pdfWidth = width * pxToPt;
-      let pdfHeight = height * pxToPt;
-      if (pdfWidth > maxWidth) {
-        const widthRatio = maxWidth / pdfWidth;
-        const ratio = Math.max(widthRatio, minScale);
-        if (ratio > widthRatio) anyLineOverflowed = true;
-        pdfWidth *= ratio;
-        pdfHeight *= ratio;
+    const nameInput = document.createElement('input');
+    nameInput.className = 'manage-snippet-name';
+    nameInput.type = 'text';
+    nameInput.value = snippet.name;
+    nameInput.addEventListener('change', () => {
+      const current = loadSnippets();
+      const target = current.find((s) => s.id === snippet.id);
+      if (target) {
+        target.name = nameInput.value.trim() || target.name;
+        saveSnippets(current);
       }
-      if (y + pdfHeight > pageHeight - margin) {
-        doc.addPage();
-        y = margin;
-      }
-      await svg2pdf(svg, doc, { x: margin, y, width: pdfWidth, height: pdfHeight });
-      svg.remove();
-      y += pdfHeight + lineGap;
-    }
+      nameInput.value = target ? target.name : snippet.name;
+    });
 
-    doc.save('mathamorph.pdf');
-    const overflowNote = anyLineOverflowed ? ' Some lines were too wide to fit the page and overflow its edge.' : '';
-    showStatus(`Exported ${withContent.length} line(s) to PDF.${overflowNote}`, false);
-  } catch (err) {
-    console.error(err);
-    showStatus('Could not export PDF.', true);
-  } finally {
-    exportPdfBtn.disabled = false;
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'manage-snippet-delete';
+    deleteBtn.textContent = 'Delete';
+    deleteBtn.addEventListener('click', () => {
+      saveSnippets(loadSnippets().filter((s) => s.id !== snippet.id));
+      renderManageSnippetsList();
+    });
+
+    row.append(preview, nameInput, deleteBtn);
+    manageSnippetsList.appendChild(row);
   }
 }
 
-exportPdfBtn.addEventListener('click', exportPdf);
-
-openDocumentBtn.addEventListener('click', () => {
-  openDocument();
+manageSnippetsBtn.addEventListener('click', () => {
+  renderManageSnippetsList();
+  manageSnippetsDialog.showModal();
   closeHeaderMenu();
 });
 
-saveDocumentBtn.addEventListener('click', () => {
-  saveDocument();
+exportSnippetsBtn.addEventListener('click', () => {
+  const snippets = loadSnippets();
+  if (snippets.length === 0) {
+    showStatus('No snippets to export yet.', true);
+  } else {
+    downloadFile('mathamorph-snippets.json', JSON.stringify(snippets, null, 2), 'application/json');
+    showStatus(`Exported ${snippets.length} snippet${snippets.length === 1 ? '' : 's'}.`, false);
+  }
   closeHeaderMenu();
 });
 
-saveDocumentAsBtn.addEventListener('click', () => {
-  saveDocumentAs();
+importSnippetsBtn.addEventListener('click', () => {
+  importSnippetsInput.click();
   closeHeaderMenu();
 });
 
+importSnippetsInput.addEventListener('change', () => {
+  const file = importSnippetsInput.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let imported;
+    try {
+      imported = JSON.parse(reader.result);
+    } catch (err) {
+      console.error(err);
+      showStatus('That file is not a valid snippet library.', true);
+      return;
+    }
+    if (!Array.isArray(imported)) {
+      showStatus('That file is not a valid snippet library.', true);
+      return;
+    }
+    // Always additive, never destructive - re-id every imported snippet so it can't collide
+    // with (or silently overwrite) one already in the library that happens to reuse the same id.
+    const newOnes = imported
+      .filter((entry) => entry && typeof entry.latex === 'string' && typeof entry.name === 'string')
+      .map((entry) => createSnippet(entry.name, entry.latex, Array.isArray(entry.tags) ? entry.tags : []));
+    saveSnippets([...loadSnippets(), ...newOnes]);
+    showStatus(`Imported ${newOnes.length} snippet${newOnes.length === 1 ? '' : 's'}.`, false);
+  };
+  reader.onerror = () => showStatus('Could not read that file.', true);
+  reader.readAsText(file);
+  importSnippetsInput.value = '';
+});
+
+seedDefaultSnippetsIfNeeded();
 initializeDocument();
