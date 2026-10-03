@@ -527,6 +527,12 @@ math-field::part(menu-item):hover {
   background: var(--control-bg);
 }
 
+.app-dialog-actions button:focus {
+  outline: none;
+  border-color: var(--field-border-focus);
+  box-shadow: 0 0 0 2px rgba(41, 121, 255, 0.25);
+}
+
 .app-dialog-actions .app-dialog-primary {
   border-color: var(--field-border-focus);
   background: var(--field-border-focus);
