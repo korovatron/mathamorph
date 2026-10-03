@@ -85,9 +85,6 @@ const saveDocumentBtn = document.getElementById('save-document');
 const saveDocumentAsBtn = document.getElementById('save-document-as');
 const openDocumentBtn = document.getElementById('open-document');
 const openDocumentInput = document.getElementById('open-document-input');
-const variableInput = document.getElementById('variable-input');
-const seriesAboutInput = document.getElementById('series-about');
-const seriesTermsInput = document.getElementById('series-terms');
 const statusEl = document.getElementById('status');
 
 function showStatus(message, isError) {
@@ -492,8 +489,23 @@ function runOperation(compute) {
   activeMathField.focus();
 }
 
-function currentVariable() {
-  return variableInput.value.trim() || 'x';
+// Which symbols in a selection are actual free variables (as opposed to known constants like
+// pi, or function names like f in f(x)) - Compute Engine's own `unknowns` already filters those
+// out correctly, so operations needing a variable (Differentiate/Integrate/Solve) can offer it
+// automatically instead of requiring it to be typed into a separate box every time.
+function freeVariablesOf(latex) {
+  try {
+    return [...ce.parse(latex).unknowns].sort();
+  } catch {
+    return [];
+  }
+}
+
+// The variable to pre-fill when more than one is found (e.g. for the Series dialog) - "x" is
+// overwhelmingly the most common choice, so prefer it over just taking the alphabetically first.
+function bestGuessVariable(unknowns) {
+  if (unknowns.includes('x')) return 'x';
+  return unknowns[0] || 'x';
 }
 
 // If the selection is already a complete D(...) or Integrate(...) expression, wrapping it again
@@ -558,42 +570,39 @@ const operations = [
     id: 'diff',
     label: 'Differentiate',
     group: 'calculus',
-    description: "Differentiate with respect to the variable set in the \"wrt\" field.",
-    compute: (latex) => {
+    needsVariable: true,
+    description: 'Differentiate with respect to the detected variable (or your choice, if there is more than one).',
+    compute: (latex, variable) => {
       if (isHeaded(latex, 'D')) return ce.parse(latex).evaluate();
-      const v = currentVariable();
-      return parse(`\\frac{d}{d${v}}\\left(${latex}\\right)`).evaluate();
+      return parse(`\\frac{d}{d${variable}}\\left(${latex}\\right)`).evaluate();
     },
   },
   {
     id: 'integrate',
     label: 'Integrate',
     group: 'calculus',
-    description: "Integrate with respect to the variable set in the \"wrt\" field.",
-    compute: (latex) => {
+    needsVariable: true,
+    description: 'Integrate with respect to the detected variable (or your choice, if there is more than one).',
+    compute: (latex, variable) => {
       if (isHeaded(latex, 'Integrate')) return ce.parse(latex).evaluate();
-      const v = currentVariable();
-      return parse(`\\int\\left(${latex}\\right)\\,d${v}`).evaluate();
+      return parse(`\\int\\left(${latex}\\right)\\,d${variable}`).evaluate();
     },
   },
   {
     id: 'series',
     label: 'Series',
     group: 'calculus',
-    description: 'Expand as a Taylor series about the configured point, to the configured number of terms.',
-    compute: (latex) => {
-      const v = currentVariable();
-      const about = seriesAboutInput.value.trim() || '0';
-      const terms = seriesTermsInput.value.trim() || '4';
-      return ce.parse(`\\operatorname{Series}(${latex}, ${v}, ${about}, ${terms})`).evaluate();
-    },
+    description: 'Expand as a Taylor series - opens a dialog to choose the variable, expansion point and order.',
+    compute: (latex, variable, about, order) =>
+      ce.parse(`\\operatorname{Series}(${latex}, ${variable}, ${about}, ${order})`).evaluate(),
   },
   {
     id: 'solve',
     label: 'Solve',
     group: 'solve',
-    description: "Find the value(s) of the variable set in \"wrt\" that satisfy the equation.",
-    compute: (latex) => solve(latex, currentVariable()),
+    needsVariable: true,
+    description: 'Find the value(s) of the detected variable (or your choice, if there is more than one) that satisfy the equation.',
+    compute: (latex, variable) => solve(latex, variable),
   },
   {
     id: 'inverse',
@@ -718,8 +727,14 @@ function addMenuButton(menu, label, onActivate, title) {
 }
 
 // An inline, click-to-expand submenu (rather than MathLive's hover-to-open flyouts, which is
-// exactly the interaction pattern its own nested menus get stuck on) - items: {label, onActivate}.
-function addSubmenu(menu, label, items) {
+// exactly the interaction pattern its own nested menus get stuck on) - items: {label, onActivate},
+// optionally {html: true} to render a raw HTML label (for the math template previews reused from
+// MathLive's own "Insert" menu) instead of plain text, {heading: 'Section title'} for a
+// non-interactive section label splitting up a long list of items (also borrowed from there), or
+// {submenu: [...]} to nest another expandable level (e.g. Differentiate/Integrate/Solve, when a
+// selection has more than one candidate variable to pick from) - title sets a tooltip on this
+// submenu's own toggle button.
+function addSubmenu(menu, label, items, title) {
   const li = document.createElement('li');
   li.setAttribute('role', 'none');
 
@@ -729,6 +744,7 @@ function addSubmenu(menu, label, items) {
   toggle.setAttribute('role', 'menuitem');
   toggle.setAttribute('aria-haspopup', 'true');
   toggle.setAttribute('aria-expanded', 'false');
+  if (title) toggle.title = title;
   toggle.textContent = label;
 
   const submenu = document.createElement('ul');
@@ -742,6 +758,19 @@ function addSubmenu(menu, label, items) {
   for (const item of items) {
     const subLi = document.createElement('li');
     subLi.setAttribute('role', 'none');
+
+    if (item.heading) {
+      subLi.className = 'morph-submenu-heading';
+      subLi.textContent = item.heading;
+      submenu.appendChild(subLi);
+      continue;
+    }
+
+    if (item.submenu) {
+      addSubmenu(submenu, item.label, item.submenu, item.description);
+      continue;
+    }
+
     const subButton = document.createElement('button');
     subButton.type = 'button';
     subButton.className = 'morph-menu-item';
@@ -749,7 +778,8 @@ function addSubmenu(menu, label, items) {
     subButton.setAttribute('role', 'checked' in item ? 'menuitemradio' : 'menuitem');
     if ('checked' in item) subButton.setAttribute('aria-checked', String(Boolean(item.checked)));
     if (item.description) subButton.title = item.description;
-    subButton.textContent = item.label;
+    if (item.html) subButton.innerHTML = item.label;
+    else subButton.textContent = item.label;
     subButton.addEventListener('click', () => {
       item.onActivate();
       closeFieldMenu();
@@ -814,6 +844,117 @@ function addMatrixPicker(menu, field, insertMatrixItems) {
   menu.appendChild(li);
 }
 
+// Series needs three pieces of information (variable, expansion point, truncation order) rather
+// than the single variable Differentiate/Integrate/Solve need, so a quick variable-picker
+// submenu doesn't fit it as well - it always opens this small dialog instead, pre-filled with
+// sensible defaults (the detected variable, about 0, order 4) that can be overridden.
+const seriesDialog = document.createElement('dialog');
+seriesDialog.className = 'series-dialog';
+seriesDialog.innerHTML = `
+  <form method="dialog">
+    <h2>Series</h2>
+    <div class="series-dialog-field">
+      <label for="series-dialog-variable">Variable</label>
+      <input id="series-dialog-variable" type="text" />
+    </div>
+    <div class="series-dialog-field">
+      <label for="series-dialog-about">About</label>
+      <input id="series-dialog-about" type="text" />
+    </div>
+    <div class="series-dialog-field">
+      <label for="series-dialog-order" title="The highest power of the variable to expand up to - not a count of terms, since some powers may not appear (e.g. a series with only odd powers).">Order</label>
+      <input id="series-dialog-order" type="text" />
+    </div>
+    <div class="series-dialog-actions">
+      <button type="button" class="series-dialog-cancel">Cancel</button>
+      <button type="submit" value="compute" class="series-dialog-compute">Compute</button>
+    </div>
+  </form>
+`;
+document.body.appendChild(seriesDialog);
+const seriesVariableInput = seriesDialog.querySelector('#series-dialog-variable');
+const seriesAboutDialogInput = seriesDialog.querySelector('#series-dialog-about');
+const seriesOrderDialogInput = seriesDialog.querySelector('#series-dialog-order');
+seriesDialog.querySelector('.series-dialog-cancel').addEventListener('click', () => seriesDialog.close('cancel'));
+
+let seriesDialogField = null;
+seriesDialog.addEventListener('close', () => {
+  if (seriesDialog.returnValue !== 'compute') return;
+  const variable = seriesVariableInput.value.trim() || 'x';
+  const about = seriesAboutDialogInput.value.trim() || '0';
+  const order = seriesOrderDialogInput.value.trim() || '4';
+  activeMathField = seriesDialogField;
+  runOperation((latex) => ce.parse(`\\operatorname{Series}(${latex}, ${variable}, ${about}, ${order})`).evaluate());
+});
+
+function openSeriesDialog(field, unknowns) {
+  seriesDialogField = field;
+  // Reset so a dialog dismissed with Escape (which skips the Cancel button, and so never sets
+  // returnValue) doesn't carry over a stale 'compute' from a previous use of this same dialog.
+  seriesDialog.returnValue = '';
+  seriesVariableInput.value = bestGuessVariable(unknowns);
+  seriesAboutDialogInput.value = '0';
+  seriesOrderDialogInput.value = '4';
+  seriesDialog.showModal();
+  seriesVariableInput.focus();
+  seriesVariableInput.select();
+}
+
+// Builds the {label, description, onActivate} (or {..., submenu}) descriptor for one operation's
+// menu entry, given the free variables detected in the current selection - Series always opens
+// its own dialog regardless; Differentiate/Integrate/Solve run immediately against the only (or
+// best-guess) variable, or expand into a variable-picking submenu if the selection has several.
+function buildOperationMenuItem(op, unknowns, field) {
+  if (op.id === 'series') {
+    return {
+      label: op.label,
+      description: op.description,
+      onActivate: () => openSeriesDialog(field, unknowns),
+    };
+  }
+
+  if (op.needsVariable) {
+    if (unknowns.length > 1) {
+      return {
+        label: op.label,
+        description: op.description,
+        submenu: unknowns.map((variable) => ({
+          label: variable,
+          onActivate: () => {
+            activeMathField = field;
+            runOperation((latex) => op.compute(latex, variable));
+          },
+        })),
+      };
+    }
+    const variable = unknowns[0] || 'x';
+    return {
+      label: op.label,
+      description: op.description,
+      onActivate: () => {
+        activeMathField = field;
+        runOperation((latex) => op.compute(latex, variable));
+      },
+    };
+  }
+
+  return {
+    label: op.label,
+    description: op.description,
+    onActivate: () => {
+      activeMathField = field;
+      runOperation(op.compute);
+    },
+  };
+}
+
+// Renders a {label, onActivate} or {label, submenu} descriptor from buildOperationMenuItem()
+// directly into a menu - shared by the top-level items and each category submenu's items.
+function renderMenuItem(menu, item) {
+  if (item.submenu) addSubmenu(menu, item.label, item.submenu, item.description);
+  else addMenuButton(menu, item.label, item.onActivate, item.description);
+}
+
 // Builds and shows the field's whole right-click menu: Morph operations for the current
 // selection (if any), clipboard actions, export, and the always-available insert/mode tools.
 function openFieldMenu(field, x, y) {
@@ -823,17 +964,11 @@ function openFieldMenu(field, x, y) {
   fieldMenu.innerHTML = '';
 
   if (selectionLatex) {
+    const unknowns = freeVariablesOf(selectionLatex);
+
     const topLevelOps = operations.filter((op) => MORPH_TOP_LEVEL_IDS.includes(op.id));
     for (const op of topLevelOps) {
-      addMenuButton(
-        fieldMenu,
-        op.label,
-        () => {
-          activeMathField = field;
-          runOperation(op.compute);
-        },
-        op.description,
-      );
+      renderMenuItem(fieldMenu, buildOperationMenuItem(op, unknowns, field));
     }
     if (topLevelOps.length) addMenuDivider(fieldMenu);
 
@@ -842,14 +977,7 @@ function openFieldMenu(field, x, y) {
       addSubmenu(
         fieldMenu,
         category.label,
-        items.map((op) => ({
-          label: op.label,
-          description: op.description,
-          onActivate: () => {
-            activeMathField = field;
-            runOperation(op.compute);
-          },
-        })),
+        items.map((op) => buildOperationMenuItem(op, unknowns, field)),
       );
     }
     addMenuDivider(fieldMenu);
@@ -872,6 +1000,17 @@ function openFieldMenu(field, x, y) {
   addMenuDivider(fieldMenu);
 
   addMatrixPicker(fieldMenu, field, native.insertMatrix);
+  addMenuDivider(fieldMenu);
+
+  addSubmenu(
+    fieldMenu,
+    'Insert',
+    native.insertTemplates.map((item) =>
+      item.type === 'heading'
+        ? { heading: resolveLabel(item) }
+        : { label: resolveLabel(item), html: true, onActivate: () => item.onMenuSelect() },
+    ),
+  );
   addMenuDivider(fieldMenu);
 
   addSubmenu(
@@ -904,7 +1043,8 @@ document.addEventListener('keydown', (ev) => {
 });
 
 // Caches the handful of MathLive native menu items whose logic we reuse (Cut/Copy
-// formats/Paste/Insert Matrix/Mode) before replacing the field's own menu with an empty one.
+// formats/Paste/Insert Matrix/Insert templates/Mode) before replacing the field's own menu with
+// an empty one.
 const nativeMenuDataByField = new WeakMap();
 
 function installFieldMenu(field) {
@@ -915,6 +1055,7 @@ function installFieldMenu(field) {
     copyFormats: findItem('copy')?.submenu ?? [],
     paste: findItem('paste'),
     insertMatrix: findItem('insert-matrix')?.submenu ?? [],
+    insertTemplates: findItem('insert')?.submenu ?? [],
     modes: findItem('mode')?.submenu ?? [],
   });
   // MathLive's own menu system has a long-standing upstream bug where nested-submenu clicks

@@ -14,6 +14,10 @@
   })();
 </script>
 <link rel="stylesheet" href="style.css" />
+<!-- Provides the KaTeX fonts/classes MathLive's own "Insert" menu previews use (see the
+     Insert submenu reusing MathLive's items, in app.js) - MathLive only needs this itself when
+     rendering outside a math-field's shadow DOM, which is exactly what our own menu does. -->
+<link rel="stylesheet" href="https://unpkg.com/mathlive/mathlive-static.css" />
 </head>
 <body>
   <header>
@@ -83,16 +87,6 @@
     <div class="document-actions">
       <button id="btn-add-line" class="add-line" type="button">+ Add line</button>
       <button id="btn-export-pdf" class="add-line" type="button">Export PDF</button>
-    </div>
-
-    <div class="toolbar" id="settings-bar">
-      <label for="variable-input">wrt</label>
-      <input id="variable-input" type="text" value="x" size="2" />
-      <span class="divider"></span>
-      <label for="series-about">series about</label>
-      <input id="series-about" type="text" value="0" size="2" />
-      <label for="series-terms">terms</label>
-      <input id="series-terms" type="text" value="4" size="2" />
     </div>
 
     <p id="status"></p>
