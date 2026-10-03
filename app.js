@@ -519,20 +519,46 @@ function applyPerSide(latex, computeFn) {
 
 // Shared by the toolbar buttons and each mathfield's own "Morph" context menu, so both stay in sync.
 const operations = [
-  { id: 'simplify', label: 'Simplify', group: 'algebra', compute: (latex) => applyPerSide(latex, (l) => simplify(l)) },
-  { id: 'expand', label: 'Expand', group: 'algebra', compute: (latex) => applyPerSide(latex, (l) => expand(l)) },
-  { id: 'factor', label: 'Factor', group: 'algebra', compute: (latex) => applyPerSide(latex, (l) => factor(l)) },
-  { id: 'evaluate', label: 'Evaluate', group: 'algebra', compute: (latex) => applyPerSide(latex, (l) => parse(l).N()) },
+  {
+    id: 'simplify',
+    label: 'Simplify',
+    group: 'algebra',
+    description: 'Rewrite as a simpler equivalent expression, keeping exact values and symbolic constants (e.g. \u03c0) as-is.',
+    compute: (latex) => applyPerSide(latex, (l) => simplify(l)),
+  },
+  {
+    id: 'expand',
+    label: 'Expand',
+    group: 'algebra',
+    description: 'Multiply out brackets and combine like terms.',
+    compute: (latex) => applyPerSide(latex, (l) => expand(l)),
+  },
+  {
+    id: 'factor',
+    label: 'Factor',
+    group: 'algebra',
+    description: 'Rewrite as a product of factors.',
+    compute: (latex) => applyPerSide(latex, (l) => factor(l)),
+  },
+  {
+    id: 'evaluate',
+    label: 'Evaluate',
+    group: 'algebra',
+    description: 'Compute a numeric (decimal) approximation, including for irrational constants.',
+    compute: (latex) => applyPerSide(latex, (l) => parse(l).N()),
+  },
   {
     id: 'partial-fractions',
     label: 'Partial fractions',
     group: 'algebra',
+    description: 'Split a rational expression into a sum of simpler fractions.',
     compute: (latex) => applyPerSide(latex, (l) => ce.box(['PartialFraction', ce.parse(l)]).evaluate()),
   },
   {
     id: 'diff',
     label: 'Differentiate',
     group: 'calculus',
+    description: "Differentiate with respect to the variable set in the \"wrt\" field.",
     compute: (latex) => {
       if (isHeaded(latex, 'D')) return ce.parse(latex).evaluate();
       const v = currentVariable();
@@ -543,6 +569,7 @@ const operations = [
     id: 'integrate',
     label: 'Integrate',
     group: 'calculus',
+    description: "Integrate with respect to the variable set in the \"wrt\" field.",
     compute: (latex) => {
       if (isHeaded(latex, 'Integrate')) return ce.parse(latex).evaluate();
       const v = currentVariable();
@@ -553,6 +580,7 @@ const operations = [
     id: 'series',
     label: 'Series',
     group: 'calculus',
+    description: 'Expand as a Taylor series about the configured point, to the configured number of terms.',
     compute: (latex) => {
       const v = currentVariable();
       const about = seriesAboutInput.value.trim() || '0';
@@ -560,32 +588,60 @@ const operations = [
       return ce.parse(`\\operatorname{Series}(${latex}, ${v}, ${about}, ${terms})`).evaluate();
     },
   },
-  { id: 'solve', label: 'Solve', group: 'solve', compute: (latex) => solve(latex, currentVariable()) },
-  { id: 'inverse', label: 'Inverse', group: 'matrix', compute: (latex) => ce.box(['Inverse', ce.parse(latex)]).evaluate() },
+  {
+    id: 'solve',
+    label: 'Solve',
+    group: 'solve',
+    description: "Find the value(s) of the variable set in \"wrt\" that satisfy the equation.",
+    compute: (latex) => solve(latex, currentVariable()),
+  },
+  {
+    id: 'inverse',
+    label: 'Inverse',
+    group: 'matrix',
+    description: 'Compute the inverse of a square matrix.',
+    compute: (latex) => ce.box(['Inverse', ce.parse(latex)]).evaluate(),
+  },
   {
     id: 'determinant',
     label: 'Determinant',
     group: 'matrix',
+    description: 'Compute the determinant of a square matrix.',
     compute: (latex) => ce.box(['Determinant', ce.parse(latex)]).evaluate(),
   },
   {
     id: 'transpose',
     label: 'Transpose',
     group: 'matrix',
+    description: 'Swap the rows and columns of a matrix.',
     compute: (latex) => ce.box(['Transpose', ce.parse(latex)]).evaluate(),
   },
-  { id: 'trace', label: 'Trace', group: 'matrix', compute: (latex) => ce.box(['Trace', ce.parse(latex)]).evaluate() },
-  { id: 'rank', label: 'Rank', group: 'matrix', compute: (latex) => ce.box(['Rank', ce.parse(latex)]).evaluate() },
+  {
+    id: 'trace',
+    label: 'Trace',
+    group: 'matrix',
+    description: 'Sum of the elements on the main diagonal of a square matrix.',
+    compute: (latex) => ce.box(['Trace', ce.parse(latex)]).evaluate(),
+  },
+  {
+    id: 'rank',
+    label: 'Rank',
+    group: 'matrix',
+    description: 'Number of linearly independent rows (or columns) of a matrix.',
+    compute: (latex) => ce.box(['Rank', ce.parse(latex)]).evaluate(),
+  },
   {
     id: 'eigenvalues',
     label: 'Eigenvalues',
     group: 'matrix',
+    description: 'Compute the eigenvalues of a square matrix.',
     compute: (latex) => ce.box(['Eigenvalues', ce.parse(latex)]).evaluate(),
   },
   {
     id: 'eigenvectors',
     label: 'Eigenvectors',
     group: 'matrix',
+    description: 'Compute the eigenvectors of a square matrix.',
     compute: (latex) => ce.box(['Eigenvectors', ce.parse(latex)]).evaluate(),
   },
 ];
@@ -599,6 +655,12 @@ const MORPH_CATEGORIES = [
   { label: 'Calculus', groups: ['calculus'] },
   { label: 'Matrices', groups: ['matrix'] },
 ];
+
+// Simplify, Evaluate and Solve are generic enough, and reached for often enough, to be worth a
+// single click rather than making every use wait through an "Algebra" submenu - every other
+// operation is specific enough to a particular kind of selection that the extra click costs
+// little. These are shown above the submenus, and excluded from them to avoid duplication.
+const MORPH_TOP_LEVEL_IDS = ['simplify', 'evaluate', 'solve'];
 
 // A single shared context menu for "Morph" operations, triggered by right-clicking a selection.
 // MathLive's own menu system has a long-standing upstream bug where nested-submenu clicks get
@@ -637,13 +699,14 @@ function addMenuDivider(menu) {
   menu.appendChild(li);
 }
 
-function addMenuButton(menu, label, onActivate) {
+function addMenuButton(menu, label, onActivate, title) {
   const li = document.createElement('li');
   li.setAttribute('role', 'none');
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'morph-menu-item';
   button.setAttribute('role', 'menuitem');
+  if (title) button.title = title;
   button.textContent = label;
   button.addEventListener('click', () => {
     onActivate();
@@ -685,6 +748,7 @@ function addSubmenu(menu, label, items) {
     subButton.classList.toggle('morph-menu-item-checked', Boolean(item.checked));
     subButton.setAttribute('role', 'checked' in item ? 'menuitemradio' : 'menuitem');
     if ('checked' in item) subButton.setAttribute('aria-checked', String(Boolean(item.checked)));
+    if (item.description) subButton.title = item.description;
     subButton.textContent = item.label;
     subButton.addEventListener('click', () => {
       item.onActivate();
@@ -759,13 +823,28 @@ function openFieldMenu(field, x, y) {
   fieldMenu.innerHTML = '';
 
   if (selectionLatex) {
+    const topLevelOps = operations.filter((op) => MORPH_TOP_LEVEL_IDS.includes(op.id));
+    for (const op of topLevelOps) {
+      addMenuButton(
+        fieldMenu,
+        op.label,
+        () => {
+          activeMathField = field;
+          runOperation(op.compute);
+        },
+        op.description,
+      );
+    }
+    if (topLevelOps.length) addMenuDivider(fieldMenu);
+
     for (const category of MORPH_CATEGORIES) {
-      const items = operations.filter((op) => category.groups.includes(op.group));
+      const items = operations.filter((op) => category.groups.includes(op.group) && !MORPH_TOP_LEVEL_IDS.includes(op.id));
       addSubmenu(
         fieldMenu,
         category.label,
         items.map((op) => ({
           label: op.label,
+          description: op.description,
           onActivate: () => {
             activeMathField = field;
             runOperation(op.compute);
