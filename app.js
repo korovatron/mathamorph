@@ -932,6 +932,22 @@ function enableClickOutsideToClose(dialog) {
   });
 }
 
+// None of these fields are credentials, but password managers (LastPass especially) sometimes
+// decorate plain text inputs with their own icon/autofill suggestions anyway - these are the
+// documented attributes to opt back out across the major ones. Exposed both as a pre-joined
+// string (for template-literal markup) and a setter (for inputs built via createElement).
+const NO_PASSWORD_MANAGER_ATTR_LIST = [
+  ['autocomplete', 'off'],
+  ['data-lpignore', 'true'],
+  ['data-1p-ignore', 'true'],
+  ['data-bwignore', 'true'],
+  ['data-form-type', 'other'],
+];
+const NO_PASSWORD_MANAGER_ATTRS = NO_PASSWORD_MANAGER_ATTR_LIST.map(([name, value]) => `${name}="${value}"`).join(' ');
+function applyNoPasswordManagerAttrs(input) {
+  for (const [name, value] of NO_PASSWORD_MANAGER_ATTR_LIST) input.setAttribute(name, value);
+}
+
 // Series needs three pieces of information (variable, expansion point, truncation order) rather
 // than the single variable Differentiate/Integrate/Solve need, so a quick variable-picker
 // submenu doesn't fit it as well - it always opens this small dialog instead, pre-filled with
@@ -943,15 +959,15 @@ seriesDialog.innerHTML = `
     <h2>Series</h2>
     <div class="app-dialog-field">
       <label for="series-dialog-variable">Variable</label>
-      <input id="series-dialog-variable" type="text" />
+      <input id="series-dialog-variable" type="text" ${NO_PASSWORD_MANAGER_ATTRS} />
     </div>
     <div class="app-dialog-field">
       <label for="series-dialog-about">About</label>
-      <input id="series-dialog-about" type="text" />
+      <input id="series-dialog-about" type="text" ${NO_PASSWORD_MANAGER_ATTRS} />
     </div>
     <div class="app-dialog-field">
       <label for="series-dialog-order" title="The highest power of the variable to expand up to - not a count of terms, since some powers may not appear (e.g. a series with only odd powers).">Order</label>
-      <input id="series-dialog-order" type="text" />
+      <input id="series-dialog-order" type="text" ${NO_PASSWORD_MANAGER_ATTRS} />
     </div>
     <div class="app-dialog-actions">
       <button type="button" class="series-dialog-cancel">Cancel</button>
@@ -999,7 +1015,7 @@ saveSnippetDialog.innerHTML = `
     <h2>Save as snippet</h2>
     <div class="app-dialog-field">
       <label for="snippet-dialog-name">Name</label>
-      <input id="snippet-dialog-name" type="text" autocomplete="off" required />
+      <input id="snippet-dialog-name" type="text" ${NO_PASSWORD_MANAGER_ATTRS} required />
     </div>
     <div class="app-dialog-actions">
       <button type="button" class="snippet-dialog-cancel">Cancel</button>
@@ -1465,6 +1481,7 @@ function renderManageSnippetsList() {
     const nameInput = document.createElement('input');
     nameInput.className = 'manage-snippet-name';
     nameInput.type = 'text';
+    applyNoPasswordManagerAttrs(nameInput);
     nameInput.value = snippet.name;
     nameInput.addEventListener('change', () => {
       const current = loadSnippets();
