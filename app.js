@@ -202,6 +202,74 @@ function isMinusKeyEvent(ev) {
   return ev.code === 'Minus' || ev.code === 'NumpadSubtract';
 }
 
+// Wires up all the event listeners a line's math-field needs - shared by createLine() and
+// rebuildMathField() (see the latter for why a field sometimes needs fully recreating rather
+// than just reused).
+function setupMathField(field, line) {
+  field.addEventListener('focus', () => {
+    activeMathField = field;
+  });
+  field.addEventListener('input', schedulePersist);
+  // Capture phase, so this runs before MathLive's own internal handler for the same event -
+  // stopPropagation() then keeps MathLive's own (now-empty) menu from also trying to open.
+  field.addEventListener('contextmenu', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    activeMathField = field;
+    field.focus();
+    openFieldMenu(field, ev.clientX, ev.clientY);
+  }, true);
+  // menuItems requires the field to be connected to the DOM, which only happens after
+  // the caller appends the returned line - defer until MathLive reports it's mounted.
+  field.addEventListener('mount', () => {
+    installFieldMenu(field);
+    patchMatrixPickerHighlight(field);
+    patchContentOverflow(field);
+  }, { once: true });
+  field.addEventListener('beforeinput', (ev) => {
+    if (ev.inputType === 'insertLineBreak') {
+      ev.preventDefault();
+      insertLineAfter(line);
+    }
+  });
+  field.addEventListener('keydown', (ev) => {
+    // MathLive has no default keybinding for the numpad Enter key, so it never reaches
+    // beforeinput/insertLineBreak - handle it directly instead.
+    if (ev.code === 'NumpadEnter' && !ev.altKey && !ev.ctrlKey && !ev.metaKey && !ev.shiftKey) {
+      ev.preventDefault();
+      insertLineAfter(line);
+      return;
+    }
+    if (ev.key === 'Backspace' && field.selectionIsCollapsed && field.position === 0) {
+      const prev = line.previousElementSibling;
+      if (prev) {
+        ev.preventDefault();
+        mergeIntoPrevious(line, prev);
+        return;
+      }
+    }
+    if (!ev.altKey && !ev.ctrlKey && !ev.metaKey) {
+      if (isPlusKeyEvent(ev)) {
+        // Let the "+"/"=" character insert as usual - just remember it might be the start of a
+        // \pm sequence, in case a "-"/"_"-like key follows soon after.
+        pendingPlusByField.set(field, Date.now());
+        return;
+      }
+      if (isMinusKeyEvent(ev)) {
+        const pendingAt = pendingPlusByField.get(field);
+        if (pendingAt && Date.now() - pendingAt <= PLUS_MINUS_TIMEOUT_MS) {
+          pendingPlusByField.delete(field);
+          ev.preventDefault();
+          field.executeCommand('deleteBackward');
+          field.insert('\\pm', { format: 'latex' });
+          return;
+        }
+      }
+    }
+    pendingPlusByField.delete(field);
+  });
+}
+
 // Creates one row of the document: a mathfield plus action buttons.
 function createLine(initialLatex) {
   const line = document.createElement('div');
@@ -282,70 +350,33 @@ function createLine(initialLatex) {
   actions.append(deleteBtn, boardModeBtn, keyboardBtn, menuBtn);
   line.append(field, actions);
 
-  field.addEventListener('focus', () => {
-    activeMathField = field;
-  });
-  field.addEventListener('input', schedulePersist);
-  // Capture phase, so this runs before MathLive's own internal handler for the same event -
-  // stopPropagation() then keeps MathLive's own (now-empty) menu from also trying to open.
-  field.addEventListener('contextmenu', (ev) => {
-    ev.preventDefault();
-    ev.stopPropagation();
-    activeMathField = field;
-    field.focus();
-    openFieldMenu(field, ev.clientX, ev.clientY);
-  }, true);
-  // menuItems requires the field to be connected to the DOM, which only happens after
-  // the caller appends the returned line - defer until MathLive reports it's mounted.
-  field.addEventListener('mount', () => {
-    installFieldMenu(field);
-    patchMatrixPickerHighlight(field);
-    patchContentOverflow(field);
-  }, { once: true });
-  field.addEventListener('beforeinput', (ev) => {
-    if (ev.inputType === 'insertLineBreak') {
-      ev.preventDefault();
-      insertLineAfter(line);
-    }
-  });
-  field.addEventListener('keydown', (ev) => {
-    // MathLive has no default keybinding for the numpad Enter key, so it never reaches
-    // beforeinput/insertLineBreak - handle it directly instead.
-    if (ev.code === 'NumpadEnter' && !ev.altKey && !ev.ctrlKey && !ev.metaKey && !ev.shiftKey) {
-      ev.preventDefault();
-      insertLineAfter(line);
-      return;
-    }
-    if (ev.key === 'Backspace' && field.selectionIsCollapsed && field.position === 0) {
-      const prev = line.previousElementSibling;
-      if (prev) {
-        ev.preventDefault();
-        mergeIntoPrevious(line, prev);
-        return;
-      }
-    }
-    if (!ev.altKey && !ev.ctrlKey && !ev.metaKey) {
-      if (isPlusKeyEvent(ev)) {
-        // Let the "+"/"=" character insert as usual - just remember it might be the start of a
-        // \pm sequence, in case a "-"/"_"-like key follows soon after.
-        pendingPlusByField.set(field, Date.now());
-        return;
-      }
-      if (isMinusKeyEvent(ev)) {
-        const pendingAt = pendingPlusByField.get(field);
-        if (pendingAt && Date.now() - pendingAt <= PLUS_MINUS_TIMEOUT_MS) {
-          pendingPlusByField.delete(field);
-          ev.preventDefault();
-          field.executeCommand('deleteBackward');
-          field.insert('\\pm', { format: 'latex' });
-          return;
-        }
-      }
-    }
-    pendingPlusByField.delete(field);
-  });
+  setupMathField(field, line);
 
   return line;
+}
+
+// Replaces a line's math-field with a brand new element instance carrying the same value
+// (preserving focus/cursor position if that field was the focused one) - see the big comment
+// where this is called, near the end of this file, for why this is ever needed at all. A fresh
+// instance is required, not just re-focusing or re-setting .value on the same element: neither
+// of those (nor even removing and reinserting the same node) clears the corruption once it's
+// happened, only swapping in a genuinely new <math-field> does.
+function rebuildMathField(line) {
+  const oldField = mathFieldIn(line);
+  const wasActive = activeMathField === oldField;
+  const hadFocus = oldField.hasFocus();
+  const { value, position } = oldField;
+
+  const newField = document.createElement('math-field');
+  newField.value = value;
+  oldField.replaceWith(newField);
+  setupMathField(newField, line);
+
+  if (wasActive) activeMathField = newField;
+  if (hadFocus) {
+    newField.focus();
+    newField.position = position;
+  }
 }
 
 function insertLineAfter(line) {
@@ -392,7 +423,11 @@ function serializeDocument() {
 }
 
 // Replaces the whole document with the given lines, keeping at least one (empty) line.
-function buildDocument(entries) {
+// `focus` defaults to true, but is set to false on startup when the About dialog is about to
+// open immediately afterwards - there's no point focusing a field the dialog is about to take
+// focus away from again anyway (see the startup code near the end of this file for the more
+// important reason the dialog needs handling specially here at all).
+function buildDocument(entries, { focus = true } = {}) {
   documentEl.innerHTML = '';
   const list = entries && entries.length ? entries : [{ latex: '' }];
   for (const entry of list) {
@@ -401,7 +436,7 @@ function buildDocument(entries) {
   }
   const firstField = mathFieldIn(documentEl.firstElementChild);
   activeMathField = firstField;
-  firstField.focus();
+  if (focus) firstField.focus();
 }
 
 // Auto-persists the live document to localStorage, so it survives reloads/browser restarts.
@@ -465,7 +500,9 @@ function initializeDocument() {
       console.error(err);
     }
   }
-  buildDocument(entries && entries.length ? entries : [{ latex: 'x^2 + 2x + 1 = 0' }]);
+  buildDocument(entries && entries.length ? entries : [{ latex: 'x^2 + 2x + 1 = 0' }], {
+    focus: !shouldShowAboutOnStartup(),
+  });
 }
 
 // Free functions like expand()/factor() can return a boxed expression or, occasionally, null.
@@ -1748,7 +1785,25 @@ boardDialog.addEventListener('close', () => {
 
 seedDefaultSnippetsIfNeeded();
 initializeDocument();
-if (shouldShowAboutOnStartup()) openAboutDialog();
+// A modal dialog's showModal() call permanently breaks physical-keystroke character insertion
+// (navigation, deletion, and programmatic edits all keep working - only typing stops) in any
+// math-field that exists at the time, if that field hasn't yet had a real keystroke typed into it
+// since being created/having its value set programmatically (restoring the document always hits
+// this - buildDocument() always sets .value directly rather than the user typing it in) - even
+// long after the dialog is closed, even though document.activeElement and hasFocus() both look
+// completely normal afterwards. This reproduces with any <dialog>.showModal(), isn't about focus
+// timing, and no amount of delay before opening the dialog avoids it - only replacing the broken
+// field with a fresh instance (see rebuildMathField()) does. The About dialog is the one place
+// this can bite on a page that's otherwise untouched (freshly restored, never-yet-typed-into
+// fields, with a dialog that opens automatically before the user has interacted with anything) -
+// so once it's closed for the first time, every line still showing its original restored content
+// gets its math-field rebuilt pre-emptively, before the user can run into the bug.
+if (shouldShowAboutOnStartup()) {
+  aboutDialog.addEventListener('close', () => {
+    for (const line of allLines()) rebuildMathField(line);
+  }, { once: true });
+  openAboutDialog();
+}
 
 // Registers the offline/PWA service worker. Updates are applied quietly: once a new sw.js
 // finishes installing alongside the one already controlling the page, tell it to take over
