@@ -374,7 +374,7 @@ math-field::part(menu-item):hover {
 
 .doc-line {
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 0.5rem;
 }
 
@@ -383,16 +383,22 @@ math-field::part(menu-item):hover {
   min-width: 0;
 }
 
+/* Delete (top), Board mode (middle), and the keyboard/menu toggle (bottom) are spread across
+   the field's full height - exactly 3 items are ever visible at once (keyboard-toggle-btn and
+   field-menu-btn are mutually exclusive via the media query below), so space-between lands the
+   middle one dead center regardless of row height. */
 .doc-line-actions {
   flex: none;
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
   gap: 0.35rem;
 }
 
 .doc-line .delete-line,
 .doc-line .keyboard-toggle-btn,
-.doc-line .field-menu-btn {
+.doc-line .field-menu-btn,
+.doc-line .board-mode-btn {
   flex: none;
   width: 1.75rem;
   height: 1.75rem;
@@ -409,7 +415,8 @@ math-field::part(menu-item):hover {
 
 .doc-line .delete-line svg,
 .doc-line .keyboard-toggle-btn svg,
-.doc-line .field-menu-btn svg {
+.doc-line .field-menu-btn svg,
+.doc-line .board-mode-btn svg {
   width: 65%;
   height: 65%;
 }
@@ -421,7 +428,8 @@ math-field::part(menu-item):hover {
 }
 
 .doc-line .keyboard-toggle-btn:hover,
-.doc-line .field-menu-btn:hover {
+.doc-line .field-menu-btn:hover,
+.doc-line .board-mode-btn:hover {
   background: var(--field-border-focus);
   border-color: var(--field-border-focus);
   color: #ffffff;
@@ -738,6 +746,82 @@ math-field::part(menu-item):hover {
   color: var(--text-muted);
   font-size: 0.9rem;
   line-height: 1.4;
+}
+
+/* Fills as much of the viewport as reasonably possible (rather than .app-dialog's small
+   content-hugging min-width) so the equation inside can be scaled up to the largest size that
+   still fits without clipping - see fitBoardField in app.js. */
+.board-dialog {
+  position: relative;
+  box-sizing: border-box;
+  width: 96vw;
+  height: 92vh;
+  max-width: 96vw;
+  max-height: 92vh;
+  padding: 1rem;
+}
+
+/* display must stay scoped to [open] - setting it unconditionally on .board-dialog would
+   override the browser's own default `dialog:not([open]) { display: none }` rule (author
+   styles always win over UA styles, regardless of selector specificity), making the dialog
+   visible even while closed. */
+.board-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.board-dialog-close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 1;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.4rem;
+  background: var(--field-bg);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.board-dialog-close svg {
+  width: 60%;
+  height: 60%;
+}
+
+.board-dialog-close:hover {
+  background: var(--error);
+  border-color: var(--error);
+  color: #ffffff;
+}
+
+.board-content {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* Read-only and non-interactive - this is purely a big display, not an editable field, so it
+   gets none of the usual math-field chrome (border/background/padding/focus ring). */
+.board-content math-field {
+  pointer-events: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  background: none;
+}
+
+.board-content math-field:focus-within {
+  border: none;
+  box-shadow: none;
 }
 
 #status {

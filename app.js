@@ -245,6 +245,20 @@ function createLine(initialLatex) {
     field.executeCommand('toggleVirtualKeyboard');
   });
 
+  // Shows the equation full-screen (see openBoardMode) for displaying to a class on a
+  // projector/whiteboard - sits between the delete and keyboard/menu buttons (see the
+  // space-between rule on .doc-line-actions, which centers it regardless of row height).
+  const boardModeBtn = document.createElement('button');
+  boardModeBtn.type = 'button';
+  boardModeBtn.className = 'board-mode-btn';
+  boardModeBtn.setAttribute('aria-label', 'Board mode');
+  boardModeBtn.title = 'Show this equation full-screen';
+  boardModeBtn.innerHTML =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<polyline points="9 3 3 3 3 9"/><polyline points="15 3 21 3 21 9"/>' +
+    '<polyline points="21 15 21 21 15 21"/><polyline points="3 15 3 21 9 21"/></svg>';
+  boardModeBtn.addEventListener('click', () => openBoardMode(field));
+
   // MathLive's touch handling is unreliable enough (long-press doesn't reach a "contextmenu"
   // event, and in practice doesn't reliably trigger a long-press gesture at all) that fighting
   // it isn't worth it - instead, touch devices get this dedicated button (hidden on desktop via
@@ -265,7 +279,7 @@ function createLine(initialLatex) {
     openFieldMenu(field, rect.left, rect.bottom);
   });
 
-  actions.append(deleteBtn, keyboardBtn, menuBtn);
+  actions.append(deleteBtn, boardModeBtn, keyboardBtn, menuBtn);
   line.append(field, actions);
 
   field.addEventListener('focus', () => {
@@ -1665,6 +1679,71 @@ showHelpBtn.addEventListener('click', () => {
   helpDialog.showModal();
   helpCloseBtn.focus();
   closeHeaderMenu();
+});
+
+// "Board mode" (see the board-mode-btn on each line, above) makes the most of the viewport to
+// show one equation as large as possible without clipping, for displaying to a class on a
+// projector or whiteboard. A single shared read-only math-field is reused across every line
+// (like the snippet previews in Manage snippets) rather than cloning each field's own element.
+const boardDialog = document.createElement('dialog');
+boardDialog.className = 'app-dialog board-dialog';
+boardDialog.innerHTML = `
+  <button type="button" class="board-dialog-close" aria-label="Close board mode">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+      <line x1="5" y1="5" x2="19" y2="19" /><line x1="19" y1="5" x2="5" y2="19" />
+    </svg>
+  </button>
+  <div class="board-content">
+    <math-field read-only tabindex="-1"></math-field>
+  </div>
+`;
+document.body.appendChild(boardDialog);
+enableClickOutsideToClose(boardDialog);
+const boardField = boardDialog.querySelector('math-field');
+const boardContent = boardDialog.querySelector('.board-content');
+boardDialog.querySelector('.board-dialog-close').addEventListener('click', () => boardDialog.close());
+
+// Scales boardField's font-size so the equation fills as much of the available space as
+// possible without clipping, preserving its aspect ratio. MathLive renders in em units relative
+// to the field's own font-size, so this is a measure-at-a-known-size-then-scale approach: render
+// at an arbitrary baseline, measure how big that actually came out, then scale by whatever factor
+// makes it exactly fill the content area's width or height (whichever is the binding constraint).
+function fitBoardField() {
+  const BASELINE_FONT_SIZE = 32;
+  boardField.style.fontSize = `${BASELINE_FONT_SIZE}px`;
+  const contentRect = boardContent.getBoundingClientRect();
+  const fieldRect = boardField.getBoundingClientRect();
+  if (fieldRect.width === 0 || fieldRect.height === 0) return;
+  const scale = Math.min(contentRect.width / fieldRect.width, contentRect.height / fieldRect.height);
+  boardField.style.fontSize = `${BASELINE_FONT_SIZE * scale}px`;
+}
+
+let boardResizeObserver = null;
+let boardSourceField = null;
+
+function openBoardMode(field) {
+  const latex = field.value;
+  if (!latex || !latex.trim()) {
+    showStatus('Nothing to display - the equation is empty.', true);
+    return;
+  }
+  boardSourceField = field;
+  boardField.value = latex;
+  boardDialog.showModal();
+  fitBoardField();
+  // The dialog is meant to stay open on a projector for a while, so keep it filling the
+  // viewport (and re-fit the equation to match) if the window/screen is resized while it's up.
+  boardResizeObserver = new ResizeObserver(() => fitBoardField());
+  boardResizeObserver.observe(boardContent);
+}
+
+boardDialog.addEventListener('close', () => {
+  boardResizeObserver?.disconnect();
+  boardResizeObserver = null;
+  // Return attention to whichever field opened board mode, so the user can carry straight on
+  // editing it instead of needing to click back into it first.
+  boardSourceField?.focus();
+  boardSourceField = null;
 });
 
 seedDefaultSnippetsIfNeeded();
