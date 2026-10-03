@@ -90,27 +90,6 @@ const seriesAboutInput = document.getElementById('series-about');
 const seriesTermsInput = document.getElementById('series-terms');
 const statusEl = document.getElementById('status');
 
-// Which operations are useful depends on what kind of thing is selected, not just whether
-// anything is - used to filter each field's "Morph" submenu to only the relevant operations.
-function classifySelection(latex) {
-  if (!latex) return 'none';
-  try {
-    const head = ce.parse(latex).json[0];
-    if (head === 'Matrix') return 'matrix';
-    if (head === 'Equal') return 'equation';
-  } catch {
-    // Fall through: still classify as a plain expression so the menu shows something.
-  }
-  return 'expression';
-}
-
-const visibleGroupsByKind = {
-  none: [],
-  expression: ['algebra', 'calculus'],
-  equation: ['algebra', 'solve'],
-  matrix: ['matrix'],
-};
-
 function showStatus(message, isError) {
   statusEl.textContent = message;
   statusEl.classList.toggle('error', Boolean(isError));
@@ -611,6 +590,16 @@ const operations = [
   },
 ];
 
+// Rather than guessing which operations suit the current selection (unreliable, and fiddly to
+// get right for every edge case), the "Morph" menu always offers everything, organised into
+// these three fixed submenus - running an operation on something it doesn't apply to is harmless,
+// since compute() below just leaves the selection unchanged.
+const MORPH_CATEGORIES = [
+  { label: 'Algebra', groups: ['algebra', 'solve'] },
+  { label: 'Calculus', groups: ['calculus'] },
+  { label: 'Matrices', groups: ['matrix'] },
+];
+
 // A single shared context menu for "Morph" operations, triggered by right-clicking a selection.
 // MathLive's own menu system has a long-standing upstream bug where nested-submenu clicks get
 // swallowed (https://github.com/arnog/mathlive/issues/2927), which made "Morph" unreliable when
@@ -622,6 +611,13 @@ const fieldMenu = document.createElement('ul');
 fieldMenu.className = 'morph-menu';
 fieldMenu.setAttribute('role', 'menu');
 fieldMenu.hidden = true;
+// Mousedown on a button normally shifts focus to it, which blurs the field and visibly collapses
+// its selection highlight - even though the selection is still applied correctly behind the
+// scenes (see lastSelectionByField/restoreSelectionIfNeeded below), seeing it vanish is confusing,
+// especially while clicking through a submenu to reach an operation. Preventing the mousedown's
+// default action keeps focus (and the highlight) on the field for the whole menu interaction,
+// without affecting the click events the menu's buttons rely on.
+fieldMenu.addEventListener('mousedown', (ev) => ev.preventDefault());
 document.body.appendChild(fieldMenu);
 
 function closeFieldMenu() {
@@ -700,6 +696,13 @@ function addSubmenu(menu, label, items) {
 
   toggle.addEventListener('click', () => {
     const willOpen = submenu.hidden;
+    // Only one submenu should be open at a time - collapse any other open submenu in this
+    // same menu before (or instead of) opening this one.
+    for (const otherToggle of menu.querySelectorAll(':scope > li > .morph-submenu-toggle')) {
+      if (otherToggle === toggle) continue;
+      otherToggle.setAttribute('aria-expanded', 'false');
+      otherToggle.nextElementSibling.hidden = true;
+    }
     submenu.hidden = !willOpen;
     toggle.setAttribute('aria-expanded', String(willOpen));
   });
@@ -756,16 +759,21 @@ function openFieldMenu(field, x, y) {
   fieldMenu.innerHTML = '';
 
   if (selectionLatex) {
-    const kind = classifySelection(selectionLatex);
-    const groups = visibleGroupsByKind[kind];
-    const applicable = operations.filter((op) => groups.includes(op.group));
-    for (const op of applicable) {
-      addMenuButton(fieldMenu, op.label, () => {
-        activeMathField = field;
-        runOperation(op.compute);
-      });
+    for (const category of MORPH_CATEGORIES) {
+      const items = operations.filter((op) => category.groups.includes(op.group));
+      addSubmenu(
+        fieldMenu,
+        category.label,
+        items.map((op) => ({
+          label: op.label,
+          onActivate: () => {
+            activeMathField = field;
+            runOperation(op.compute);
+          },
+        })),
+      );
     }
-    if (applicable.length) addMenuDivider(fieldMenu);
+    addMenuDivider(fieldMenu);
 
     addMenuButton(fieldMenu, 'Cut', () => native.cut?.onMenuSelect());
     addMenuButton(fieldMenu, 'Copy', () => field.executeCommand('copyToClipboard'));
