@@ -104,6 +104,14 @@ document.addEventListener('keydown', (ev) => {
 const documentEl = document.getElementById('document');
 const addLineBtn = document.getElementById('btn-add-line');
 const statusEl = document.getElementById('status');
+const examplesHintEl = document.getElementById('examples-hint');
+
+// Only relevant while the document still is the pre-populated worked examples - once the user
+// changes anything (typing, adding/deleting a line, or applying a Morph operation), it's served
+// its purpose and would just be clutter from then on.
+function hideExamplesHint() {
+  examplesHintEl.hidden = true;
+}
 
 function showStatus(message, isError) {
   statusEl.textContent = message;
@@ -239,6 +247,13 @@ function setupMathField(field, line) {
     ev.stopPropagation();
     activeMathField = field;
     field.focus();
+    // With nothing selected, the Morph submenu would be entirely empty - which is exactly the
+    // state a new user hits right away (the hint says "right-click to Morph", but the default
+    // example equation starts with no selection). Auto-selecting everything first mirrors the
+    // touch-only field-menu button below (see menuBtn), which already does this unconditionally,
+    // and gives an immediate visual cue (the whole equation highlights) for what's about to be
+    // acted on.
+    if (field.selectionIsCollapsed) field.executeCommand('selectAll');
     openFieldMenu(field, ev.clientX, ev.clientY);
   }, true);
   // menuItems requires the field to be connected to the DOM, which only happens after
@@ -464,6 +479,7 @@ function buildDocument(entries, { focus = true } = {}) {
 // Auto-persists the live document to localStorage, so it survives reloads/browser restarts.
 let persistTimeout = null;
 function schedulePersist() {
+  hideExamplesHint();
   clearTimeout(persistTimeout);
   persistTimeout = setTimeout(() => {
     localStorage.setItem(DOCUMENT_STORAGE_KEY, JSON.stringify(serializeDocument()));
@@ -511,6 +527,23 @@ function seedDefaultSnippetsIfNeeded() {
   ]);
 }
 
+// A brand-new document has nothing to demonstrate the "right-click to morph" hint with - seed
+// it with a few worked examples on the very first run, each ready to showcase a different kind
+// of operation straight away: an equation to Solve, a factored cubic to Expand, and a definite
+// integral to Integrate.
+const DEFAULT_DOCUMENT_ENTRIES = [
+  { latex: 'x^2 + 2x + 1 = 0' },
+  { latex: '(x-1)(x-2)(x-3)' },
+  { latex: '\\int_{0}^{2}\\left(x^2+1\\right)dx' },
+];
+
+// A persisted document with no lines, or with only blank ones (e.g. because the user deleted
+// every equation they had), has nothing left to demonstrate the "right-click to morph" hint with
+// either - functionally indistinguishable from a brand-new session, so treat it the same way.
+function isBlankDocument(entries) {
+  return !entries || !entries.some((entry) => entry.latex && entry.latex.trim());
+}
+
 // On startup, restore the last auto-persisted document if there is one, otherwise show a worked example.
 function initializeDocument() {
   const raw = localStorage.getItem(DOCUMENT_STORAGE_KEY);
@@ -522,9 +555,11 @@ function initializeDocument() {
       console.error(err);
     }
   }
-  buildDocument(entries && entries.length ? entries : [{ latex: 'x^2 + 2x + 1 = 0' }], {
+  const usingDefaults = isBlankDocument(entries);
+  buildDocument(usingDefaults ? DEFAULT_DOCUMENT_ENTRIES : entries, {
     focus: !shouldShowAboutOnStartup(),
   });
+  examplesHintEl.hidden = !usingDefaults;
 }
 
 // Free functions like expand()/factor() can return a boxed expression or, occasionally, null.
@@ -1337,8 +1372,9 @@ function openFieldMenu(field, x, y) {
     }
     addMenuDivider(fieldMenu);
 
-    // Cutting the whole field with nothing selected would be a surprisingly destructive
-    // default, so (unlike Copy/Copy special below) Cut stays limited to an actual selection.
+    // By this point there's always a selection - either the user's own, or the whole-field
+    // auto-selection the contextmenu/menuBtn handlers fall back to above - so Cut always has
+    // something to act on.
     addMenuButton(fieldMenu, 'Cut', () => native.cut?.onMenuSelect(), undefined, MENU_ICON_CUT);
   }
 

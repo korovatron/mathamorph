@@ -345,6 +345,14 @@ main {
   margin-top: 0;
 }
 
+/* `.hint`'s own "display: flex" above is an author-stylesheet rule, which (regardless of
+   specificity) always wins the cascade over the browser's built-in "[hidden] { display: none }"
+   UA rule - without this, setting the "hidden" attribute on a .hint element (see examples-hint)
+   would have no visible effect at all. */
+.hint[hidden] {
+  display: none;
+}
+
 .hint-icon {
   flex: none;
   width: 1.5em;
@@ -353,6 +361,15 @@ main {
 
 .hint-morph {
   color: var(--title-morph);
+}
+
+.hint-examples {
+  font-size: 0.95rem;
+  font-style: italic;
+  /* No icon of its own - indent past the primary hint's icon + gap so the two lines of text
+     still line up. */
+  padding-left: calc(1.5em + 0.5rem);
+  margin-top: 0.3rem;
 }
 
 math-field {

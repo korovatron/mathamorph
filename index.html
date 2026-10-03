@@ -239,6 +239,11 @@
       </svg>
       <span>Enter an equation. Right-click to <strong class="hint-morph"><em>morph</em></strong>, export or graph.</span>
     </p>
+    <!-- Only shown when the document below is the pre-populated worked examples (brand-new
+         session, or every equation deleted) - see initializeDocument/hideExamplesHint in app.js. -->
+    <p class="hint hint-examples" id="examples-hint" hidden>
+      <span>These are examples - try right-clicking one and applying <strong>Solve</strong>, <strong>Expand</strong> or <strong>Integrate</strong>.</span>
+    </p>
 
     <div class="document" id="document"></div>
     <div class="document-actions">
