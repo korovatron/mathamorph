@@ -918,6 +918,20 @@ function addMatrixPicker(menu, field, insertMatrixItems) {
   menu.appendChild(li);
 }
 
+// All <dialog> elements in this file already close on Escape (free, built-in) and on submitting
+// their <form method="dialog"> (e.g. pressing Space/Enter on a focused button) - this adds the
+// third expected way to dismiss one: clicking outside it. A plain `ev.target === dialog` check
+// would also trigger on clicks inside the dialog's own padding (its content doesn't fill the box),
+// so compare against its actual bounding box instead - only a click truly outside that counts.
+function enableClickOutsideToClose(dialog) {
+  dialog.addEventListener('click', (ev) => {
+    const rect = dialog.getBoundingClientRect();
+    const inside =
+      ev.clientX >= rect.left && ev.clientX <= rect.right && ev.clientY >= rect.top && ev.clientY <= rect.bottom;
+    if (!inside) dialog.close();
+  });
+}
+
 // Series needs three pieces of information (variable, expansion point, truncation order) rather
 // than the single variable Differentiate/Integrate/Solve need, so a quick variable-picker
 // submenu doesn't fit it as well - it always opens this small dialog instead, pre-filled with
@@ -946,6 +960,7 @@ seriesDialog.innerHTML = `
   </form>
 `;
 document.body.appendChild(seriesDialog);
+enableClickOutsideToClose(seriesDialog);
 const seriesVariableInput = seriesDialog.querySelector('#series-dialog-variable');
 const seriesAboutDialogInput = seriesDialog.querySelector('#series-dialog-about');
 const seriesOrderDialogInput = seriesDialog.querySelector('#series-dialog-order');
@@ -993,6 +1008,7 @@ saveSnippetDialog.innerHTML = `
   </form>
 `;
 document.body.appendChild(saveSnippetDialog);
+enableClickOutsideToClose(saveSnippetDialog);
 const snippetNameInput = saveSnippetDialog.querySelector('#snippet-dialog-name');
 saveSnippetDialog.querySelector('.snippet-dialog-cancel').addEventListener('click', () => saveSnippetDialog.close('cancel'));
 
@@ -1416,6 +1432,7 @@ manageSnippetsDialog.innerHTML = `
   </div>
 `;
 document.body.appendChild(manageSnippetsDialog);
+enableClickOutsideToClose(manageSnippetsDialog);
 const manageSnippetsList = manageSnippetsDialog.querySelector('.manage-snippets-list');
 manageSnippetsDialog.querySelector('.manage-snippets-close').addEventListener('click', () => manageSnippetsDialog.close());
 
@@ -1564,6 +1581,7 @@ aboutDialog.innerHTML = `
   </div>
 `;
 document.body.appendChild(aboutDialog);
+enableClickOutsideToClose(aboutDialog);
 const aboutShowStartupCheckbox = aboutDialog.querySelector('#about-show-startup');
 aboutShowStartupCheckbox.addEventListener('change', () => {
   localStorage.setItem(ABOUT_STARTUP_STORAGE_KEY, String(aboutShowStartupCheckbox.checked));
@@ -1621,6 +1639,7 @@ helpDialog.innerHTML = `
   </div>
 `;
 document.body.appendChild(helpDialog);
+enableClickOutsideToClose(helpDialog);
 const helpCloseBtn = helpDialog.querySelector('.help-dialog-close');
 helpCloseBtn.addEventListener('click', () => helpDialog.close());
 
