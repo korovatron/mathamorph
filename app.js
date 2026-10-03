@@ -88,6 +88,28 @@ function showStatus(message, isError) {
   statusEl.classList.toggle('error', Boolean(isError));
 }
 
+// Fires a GoatCounter custom event (see the script tag in index.html) - mirrors graphiti's own
+// tracking helper. Safe to call even when GoatCounter hasn't loaded (e.g. ad blockers, offline).
+function trackGoatCounterEvent(eventName) {
+  try {
+    if (!eventName) return;
+    if (!window.goatcounter || typeof window.goatcounter.count !== 'function') return;
+
+    const eventSlug = eventName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+    window.goatcounter.count({
+      path: `/event/${eventSlug}`,
+      title: eventName,
+      event: true,
+    });
+  } catch (error) {
+    console.warn('GoatCounter tracking failed:', error);
+  }
+}
+
 // MathLive can typeset a trailing differential as one glued "\mathrm{dx}" token, which
 // Compute Engine's parser reads as a two-letter variable rather than d times x - split it back up.
 function normalizeDifferentials(latex) {
@@ -494,6 +516,7 @@ function runOperation(compute) {
   restoreSelectionIfNeeded(activeMathField);
   replaceSelection(result);
   activeMathField.focus();
+  trackGoatCounterEvent('Mathamorph - morph applied');
 }
 
 // Which symbols in a selection are actual free variables (as opposed to known constants like
@@ -1078,7 +1101,16 @@ function openFieldMenu(field, x, y) {
     addSubmenu(
       fieldMenu,
       'Copy special',
-      native.copyFormats.map((format) => ({ label: resolveLabel(format), onActivate: () => format.onMenuSelect() })),
+      native.copyFormats.map((format) => {
+        const label = resolveLabel(format);
+        return {
+          label,
+          onActivate: () => {
+            format.onMenuSelect();
+            if (label === 'Copy as LaTeX') trackGoatCounterEvent('Mathamorph - LaTeX exported');
+          },
+        };
+      }),
     );
     addMenuDivider(fieldMenu);
   }
@@ -1263,6 +1295,7 @@ function buildExportMenu(field) {
             const blob = await latexToPngBlob(latex);
             await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
             showStatus('Copied as an image.', false);
+            trackGoatCounterEvent('Mathamorph - PNG exported');
           } catch (err) {
             console.error(err);
             showStatus('Could not copy as an image.', true);
@@ -1281,6 +1314,7 @@ function buildExportMenu(field) {
             const { svg } = await latexToSvg(latex);
             downloadFile('mathamorph.svg', serializeSvg(svg), 'image/svg+xml');
             showStatus('Downloaded as SVG.', false);
+            trackGoatCounterEvent('Mathamorph - SVG exported');
           } catch (err) {
             console.error(err);
             showStatus('Could not export as SVG.', true);
