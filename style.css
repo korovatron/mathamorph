@@ -355,6 +355,16 @@ math-field::part(menu-toggle) {
   display: none;
 }
 
+/* MathLive's virtual keyboard toggle button works fine with a mouse, but on touch devices it's
+   unreliable (a tap to close it immediately reopens it) - and it's unnecessary there anyway,
+   since tapping into a field already auto-opens the virtual keyboard, and tapping outside the
+   field closes it correctly. Hide the toggle whenever touch is the primary input. */
+@media (hover: none) and (pointer: coarse) {
+  math-field::part(virtual-keyboard-toggle) {
+    display: none;
+  }
+}
+
 math-field::part(menu-item):hover {
   background: var(--field-border-focus);
   color: #ffffff;
