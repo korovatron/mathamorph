@@ -29,7 +29,19 @@
 <meta name="twitter:description" content="Free online equation editor. Type maths like text, then simplify, solve, factorise, expand, differentiate, integrate, or find eigenvalues with a click. Export results as PNG, SVG, or LaTeX.">
 <meta name="twitter:image" content="https://www.korovatron.co.uk/mathamorph/images/screenshot.png">
 
+<!-- PWA Meta Tags -->
+<meta name="theme-color" content="#14161a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mathamorph">
+
+<!-- Manifest -->
+<link rel="manifest" href="./manifest.json">
+
+<!-- Favicon and Icons -->
 <link rel="icon" type="image/svg+xml" href="images/logo.svg" />
+<link rel="apple-touch-icon" href="images/apple-touch-icon.png" />
 
 <!-- Canonical URL -->
 <link rel="canonical" href="https://www.korovatron.co.uk/mathamorph/">
@@ -135,7 +147,8 @@
 <!-- Provides the KaTeX fonts/classes MathLive's own "Insert" menu previews use (see the
      Insert submenu reusing MathLive's items, in app.js) - MathLive only needs this itself when
      rendering outside a math-field's shadow DOM, which is exactly what our own menu does. -->
-<link rel="stylesheet" href="https://unpkg.com/mathlive/mathlive-static.css" />
+<!-- Pinned to the exact mathlive version imported in app.js, and cached permanently in sw.js. -->
+<link rel="stylesheet" href="https://unpkg.com/mathlive@0.111.0/mathlive-static.css" />
 </head>
 <body>
   <header>

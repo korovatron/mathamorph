@@ -1,5 +1,8 @@
-import { MathfieldElement } from 'https://unpkg.com/mathlive?module';
-import { ComputeEngine, parse, simplify, expand, factor, solve } from 'https://unpkg.com/@cortex-js/compute-engine?module';
+// Pinned to exact versions (rather than the unversioned/"latest" unpkg URLs) so a new upstream
+// release can never silently change behaviour underneath the app - bumping these is a deliberate,
+// testable choice. Keep in sync with the matching pinned URLs cached in sw.js.
+import { MathfieldElement } from 'https://unpkg.com/mathlive@0.111.0?module';
+import { ComputeEngine, parse, simplify, expand, factor, solve } from 'https://unpkg.com/@cortex-js/compute-engine@0.147.0?module';
 
 const ce = new ComputeEngine();
 
@@ -1169,7 +1172,9 @@ function loadMathJax() {
       // self-contained rather than relying on a shared global cache.
       window.MathJax = { svg: { fontCache: 'local' }, startup: { typeset: false } };
       const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js';
+      // Pinned to an exact version for the same reason as the mathlive/compute-engine imports
+      // above - see sw.js for the matching cached URL.
+      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js';
       script.onload = () => window.MathJax.startup.promise.then(resolve, reject);
       script.onerror = () => reject(new Error('Could not load MathJax.'));
       document.head.appendChild(script);
@@ -1566,3 +1571,25 @@ showHelpBtn.addEventListener('click', () => {
 seedDefaultSnippetsIfNeeded();
 initializeDocument();
 if (shouldShowAboutOnStartup()) openAboutDialog();
+
+// Registers the offline/PWA service worker. Updates are applied quietly: once a new sw.js
+// finishes installing alongside the one already controlling the page, tell it to take over
+// immediately and reload once, rather than leaving the user on a stale cached version.
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    const registration = await navigator.serviceWorker.register('./sw.js');
+    registration.addEventListener('updatefound', () => {
+      const newWorker = registration.installing;
+      newWorker.addEventListener('statechange', () => {
+        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+          newWorker.postMessage({ type: 'SKIP_WAITING' });
+          setTimeout(() => window.location.reload(), 1000);
+        }
+      });
+    });
+  } catch (err) {
+    console.error('Service worker registration failed:', err);
+  }
+}
+window.addEventListener('load', registerServiceWorker);
