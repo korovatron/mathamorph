@@ -128,6 +128,7 @@ header h1 {
   font-size: 0.9rem;
   text-align: left;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .header-menu-item:hover {
@@ -196,6 +197,10 @@ header h1 {
   font-size: 0.9rem;
   text-align: left;
   cursor: pointer;
+  /* Same reasoning as .header-menu-toggle above - this menu is opened by a right-click/long-press
+     and then a tap on one of these items, and without this iOS Safari can mistake that two-tap
+     sequence for its own double-tap-to-zoom gesture. */
+  touch-action: manipulation;
 }
 
 .morph-menu-item:hover {
@@ -328,6 +333,11 @@ header h1 {
   background: var(--header-control-bg);
   color: var(--header-text);
   cursor: pointer;
+  /* Without this, iOS Safari can mistake the two quick taps needed to open this menu and then
+     pick an item inside it (e.g. tapping the hamburger, then "Manage snippets...") for the
+     start of its own double-tap-to-zoom gesture, and zoom the whole page in instead of just
+     actioning the tap. manipulation tells it these taps are for direct interaction, not zooming. */
+  touch-action: manipulation;
 }
 
 .header-menu-toggle:hover {
