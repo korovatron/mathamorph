@@ -808,7 +808,9 @@ math-field::part(menu-item):hover {
 }
 
 /* Stretched (via the row's align-items above) to match the combined height of the stacked
-   name + category fields alongside it, rather than sitting shorter than them. */
+   name + category fields alongside it, rather than sitting shorter than them. 9rem is wide
+   enough even at 1rem (rather than the smaller size this used to be) - see the inert attribute
+   set on this element in app.js for why it's no longer deliberately kept small. */
 .manage-snippet-preview {
   flex: none;
   width: 9rem;
@@ -817,7 +819,7 @@ math-field::part(menu-item):hover {
   border: 1px solid var(--border);
   border-radius: 0.3rem;
   background: none;
-  font-size: 0.75rem;
+  font-size: 1rem;
   pointer-events: none;
 }
 

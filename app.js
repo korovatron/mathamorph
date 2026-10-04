@@ -2050,6 +2050,13 @@ function buildManageSnippetPreview(snippet) {
   preview.className = 'manage-snippet-preview';
   preview.setAttribute('read-only', '');
   preview.tabIndex = -1;
+  // `read-only` and `tabindex="-1"` on the host alone still leave a focusable, contenteditable
+  // region inside MathLive's own shadow DOM (confirmed: tabIndex 0, contenteditable="true") -
+  // harmless on a desktop browser, but its small font size is exactly what was triggering a
+  // residual iOS zoom when Manage Snippets opened, even once every ordinary form control in the
+  // dialog was already a comfortable 16px. `inert` excludes the whole subtree - shadow DOM
+  // included - from focus of any kind, which plain tabindex/read-only don't fully guarantee.
+  preview.inert = true;
   preview.value = snippet.latex;
   return preview;
 }
