@@ -1,7 +1,7 @@
 // Bump this on every release that changes any cached first-party file - it's what triggers
 // clients to pick up the new version (see the activate handler below, and registerServiceWorker
 // in app.js which prompts an already-open tab to reload once the new worker takes over).
-const CACHE_NAME = 'mathamorph-v1.0.7';
+const CACHE_NAME = 'mathamorph-v1.0.8';
 
 // MathLive, Compute Engine, and MathJax are all pinned to exact versions in index.html/app.js
 // rather than loaded as "latest" - this is deliberate: an unannounced upstream release could
@@ -42,6 +42,13 @@ const PINNED_LIBRARY_ASSETS = [
   // loadLZString/buildGraphitiUrl/buildKomplexitiUrl in app.js), so the "Open in
   // Graphiti"/"Open in Komplexiti" context menu items' compressed URL format can never drift.
   'https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js',
+  // Firebase SDK (Google sign-in + Firestore, used for cross-device snippet sync) - same
+  // pin-and-cache-forever treatment as the other libraries above. Firestore/Auth's own backend
+  // traffic (googleapis.com) is deliberately never touched by this service worker at all - see
+  // isBackendApiRequest/the early return for it in the fetch handler below.
+  'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js',
+  'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js',
+  'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js',
 ];
 
 const OWN_ASSETS = [
@@ -61,11 +68,25 @@ const OWN_ASSETS = [
 
 const ASSETS_TO_CACHE = [...OWN_ASSETS, ...PINNED_LIBRARY_ASSETS];
 
-const PINNED_LIBRARY_HOSTS = new Set(['unpkg.com', 'cdn.jsdelivr.net', 'cdnjs.cloudflare.com']);
+const PINNED_LIBRARY_HOSTS = new Set(['unpkg.com', 'cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'www.gstatic.com']);
 
 function isPinnedLibraryRequest(request) {
   try {
     return PINNED_LIBRARY_HOSTS.has(new URL(request.url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+// Firebase Auth/Firestore's own backend traffic (sign-in, token refresh, and the realtime
+// listener's long-lived streaming connection) - never cached and never wrapped in the timeouts
+// below, since aborting a long-lived stream after a few seconds would just force it to
+// endlessly reconnect. Letting these fall straight through to the network (no respondWith at
+// all) is the same as there being no service worker for them.
+function isBackendApiRequest(request) {
+  try {
+    const { hostname } = new URL(request.url);
+    return hostname.endsWith('.googleapis.com') || hostname === 'accounts.google.com';
   } catch {
     return false;
   }
@@ -176,6 +197,7 @@ async function handleNavigate(request) {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
+  if (isBackendApiRequest(request)) return;
 
   if (request.mode === 'navigate') {
     event.respondWith(handleNavigate(request));

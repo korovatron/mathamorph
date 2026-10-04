@@ -3,6 +3,9 @@
 // testable choice. Keep in sync with the matching pinned URLs cached in sw.js.
 import { MathfieldElement } from 'https://unpkg.com/mathlive@0.111.0?module';
 import { ComputeEngine, parse, simplify, expand, factor, solve } from 'https://unpkg.com/@cortex-js/compute-engine@0.147.0?module';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
 
 const ce = new ComputeEngine();
 
@@ -483,6 +486,7 @@ function loadSnippets() {
 
 function saveSnippets(snippets) {
   localStorage.setItem(SNIPPETS_STORAGE_KEY, JSON.stringify(snippets));
+  pushSnippetsToCloud(snippets);
 }
 
 function createSnippetId() {
@@ -495,6 +499,129 @@ function createSnippetId() {
 function createSnippet(name, latex, tags = []) {
   return { id: createSnippetId(), name, latex, tags };
 }
+
+// --- Cloud sync (Google sign-in + Firestore) ---
+// Snippets are opt-in-by-signing-in, not opt-in-by-a-separate-toggle: anyone who signs in
+// obviously wants their library synced, so there's no extra "enable sync" step. Signed-out use
+// is untouched - everything above this point already works entirely offline via localStorage,
+// and that keeps working exactly as before for anyone who never signs in.
+//
+// The whole snippet library is stored as a single field in one Firestore document per user
+// (users/{uid}.snippets) rather than one document per snippet - every mutation already funnels
+// through saveSnippets() with the full array, so this lets the entire sync layer hang off that
+// one function instead of diffing individual adds/renames/deletes into separate writes.
+//
+// The apiKey/appId below aren't secrets - anyone can read them straight out of this file (or any
+// Firebase web app's source) with no special access. What actually protects user data is the
+// Firestore security rules (each user can only read/write their own users/{uid} document) and
+// Google sign-in itself; hiding this config would do nothing for security.
+const firebaseConfig = {
+  apiKey: 'AIzaSyAIGXvu5t-RJZME3XbDgr2Op6GxD81f0EU',
+  authDomain: 'mathamorph.firebaseapp.com',
+  projectId: 'mathamorph',
+  storageBucket: 'mathamorph.firebasestorage.app',
+  messagingSenderId: '606066957457',
+  appId: '1:606066957457:web:214fc7b31b80b407963330',
+};
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
+const googleProvider = new GoogleAuthProvider();
+
+let currentUser = null;
+let unsubscribeSnippetsListener = null;
+
+// Pushes the full snippet array up to the signed-in user's Firestore document - a no-op while
+// signed out. Fire-and-forget: the UI has already updated from the localStorage write above, so
+// a slow or failed sync shouldn't block or roll back what the user just did locally, just surface
+// it via the status line.
+function pushSnippetsToCloud(snippets) {
+  if (!currentUser) return;
+  setDoc(doc(db, 'users', currentUser.uid), { snippets, updatedAt: serverTimestamp() }).catch((err) => {
+    console.error(err);
+    showStatus('Could not sync snippets to your account - check your connection.', true);
+  });
+}
+
+// Applies snippets that arrived *from* Firestore (initial load, merge, or another device's
+// change via the realtime listener below) - writes straight to localStorage rather than through
+// saveSnippets(), so receiving a cloud update never bounces straight back up as a redundant
+// write. Skipped entirely when the incoming data is identical to what's already stored, so an
+// echo of our own just-written change doesn't needlessly redraw an open Manage Snippets list.
+function applyIncomingSnippets(snippets) {
+  const incoming = JSON.stringify(snippets);
+  if (incoming === JSON.stringify(loadSnippets())) return;
+  localStorage.setItem(SNIPPETS_STORAGE_KEY, incoming);
+  if (manageSnippetsDialog.open) renderManageSnippetsList();
+}
+
+function updateAuthMenuUI() {
+  authToggleLabel.textContent = currentUser ? 'Sign out' : 'Sign in to sync snippets';
+  authToggleBtn.title = currentUser ? `Signed in as ${currentUser.email}` : '';
+}
+
+const authToggleBtn = document.getElementById('auth-toggle');
+const authToggleLabel = document.getElementById('auth-toggle-label');
+
+authToggleBtn.addEventListener('click', () => {
+  if (currentUser) {
+    signOut(auth);
+  } else {
+    signInWithPopup(auth, googleProvider).catch((err) => {
+      console.error(err);
+      // Not real failures - just the user dismissing the Google popup themselves.
+      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') return;
+      showStatus('Sign-in failed - please try again.', true);
+    });
+  }
+  closeHeaderMenu();
+});
+
+onAuthStateChanged(auth, async (user) => {
+  if (unsubscribeSnippetsListener) {
+    unsubscribeSnippetsListener();
+    unsubscribeSnippetsListener = null;
+  }
+  currentUser = user;
+  updateAuthMenuUI();
+  if (!user) return;
+
+  const userDocRef = doc(db, 'users', user.uid);
+  try {
+    const snap = await getDoc(userDocRef);
+    if (!snap.exists()) {
+      // First-ever sign-in for this account - seed the cloud with whatever's already local
+      // rather than starting from an empty library.
+      await setDoc(userDocRef, { snippets: loadSnippets(), updatedAt: serverTimestamp() });
+    } else {
+      // Signing in on a device that already has local snippets the cloud doesn't know about yet
+      // (e.g. first sign-in on a second device): merge rather than silently discarding either
+      // side - union by id, then push the merged result back up.
+      const cloudSnippets = Array.isArray(snap.data().snippets) ? snap.data().snippets : [];
+      const cloudIds = new Set(cloudSnippets.map((s) => s.id));
+      const localOnly = loadSnippets().filter((s) => !cloudIds.has(s.id));
+      const merged = [...cloudSnippets, ...localOnly];
+      applyIncomingSnippets(merged);
+      if (localOnly.length > 0) {
+        await setDoc(userDocRef, { snippets: merged, updatedAt: serverTimestamp() });
+      }
+    }
+  } catch (err) {
+    console.error(err);
+    showStatus('Could not load your synced snippets.', true);
+  }
+
+  // From here on, any change made on *another* signed-in device arrives here live - no manual
+  // "refresh" or re-opening the app needed.
+  unsubscribeSnippetsListener = onSnapshot(
+    userDocRef,
+    (snap) => {
+      if (!snap.exists()) return;
+      applyIncomingSnippets(Array.isArray(snap.data().snippets) ? snap.data().snippets : []);
+    },
+    (err) => console.error(err)
+  );
+});
 
 // A brand-new library is an empty, uninviting list with nothing to demonstrate the feature -
 // seed it with a couple of common formulas on the very first run, so there's something useful
