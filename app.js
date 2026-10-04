@@ -563,14 +563,13 @@ function applyIncomingSnippets(snippets) {
   if (manageSnippetsDialog.open) renderManageSnippetsList();
 }
 
-// Unlike snippets, the live document is only ever pulled from the cloud at startup/sign-in, never
-// kept live via a realtime listener - this is a single-user scratchpad (a teacher picking up
-// where they left off on another device), not a collaborative document, and buildDocument()
+// Unlike snippets, the live document is only ever pulled from the cloud periodically/on sign-in,
+// never kept live via a realtime listener - this is a single-user scratchpad (a teacher picking
+// up where they left off on another device), not a collaborative document, and buildDocument()
 // replaces every field wholesale, which would steal focus and interrupt typing if it ever fired
-// while someone was mid-edit. Pushes, on the other hand, happen continuously in the background -
-// just infrequently (see DOCUMENT_CLOUD_PUSH_INTERVAL_MS), since a stale-by-a-few-seconds cloud
-// copy doesn't matter but a Firestore write on every keystroke would.
-const DOCUMENT_CLOUD_PUSH_INTERVAL_MS = 30000;
+// while someone was mid-edit. A stale-by-a-few-seconds cloud copy doesn't matter, but a Firestore
+// write on every keystroke would, hence the shared interval below rather than anything livelier.
+const DOCUMENT_CLOUD_SYNC_INTERVAL_MS = 30000;
 let documentDirtyForCloud = false;
 
 function pushDocumentToCloud() {
@@ -583,16 +582,9 @@ function pushDocumentToCloud() {
   ).catch((err) => console.error(err));
 }
 
-setInterval(() => {
-  if (documentDirtyForCloud) pushDocumentToCloud();
-}, DOCUMENT_CLOUD_PUSH_INTERVAL_MS);
-
 // Seeds the cloud on first-ever sign-in, otherwise merges snippets and reconciles the document
-// against whatever's currently in Firestore - see onAuthStateChanged below for the snippets half
-// (a live listener keeps those current automatically) and the 'visibilitychange' listener further
-// down for the document half. iOS in particular just freezes an already-open tab/PWA in the
-// background rather than reloading it, so returning to it wouldn't otherwise notice a document
-// change made on another device in the meantime without this being re-run on resume too.
+// against whatever's currently in Firestore (see onAuthStateChanged below for the snippets half -
+// a live listener keeps those current automatically once signed in).
 async function reconcileWithCloud() {
   if (!currentUser) return;
   const userDocRef = doc(db, 'users', currentUser.uid);
@@ -639,7 +631,7 @@ async function reconcileWithCloud() {
       localStorage.setItem(DOCUMENT_UPDATED_AT_STORAGE_KEY, String(cloudUpdatedAtMs));
     } else if (localUpdatedAtMs > 0) {
       // Local is newer (or the cloud has nothing yet) - push now rather than waiting for the
-      // next 30-second tick, so another device checking right after sees it already.
+      // next tick, so another device checking right after sees it already.
       pushDocumentToCloud();
     }
   } catch (err) {
@@ -648,30 +640,39 @@ async function reconcileWithCloud() {
   }
 }
 
-// Throttled so rapid tab/app switching can't spam Firestore reads - a resume that happens within
-// a few seconds of the last check has nothing new to find anyway.
+// Push if there's something new to send up; otherwise use the same tick to pull, in case another
+// device changed the document while this one sat idle. This interval - not any visibility/focus
+// event - is deliberately the *primary* way a backgrounded device notices a remote change: iOS
+// standalone home-screen PWAs have a long-standing WebKit bug where 'visibilitychange' (and
+// 'focus'/'pageshow') simply don't fire reliably on resume (see
+// https://bugs.webkit.org/show_bug.cgi?id=180523), unlike an ordinary Safari tab. A plain
+// setInterval doesn't depend on that API at all - the OS pauses it while backgrounded like any
+// other timer, but it resumes ticking as soon as the app is foregrounded again, so a remote
+// change is never more than about 30 seconds stale by the time anyone looks at this device next.
+setInterval(() => {
+  if (!currentUser) return;
+  if (documentDirtyForCloud) pushDocumentToCloud();
+  else reconcileWithCloud();
+}, DOCUMENT_CLOUD_SYNC_INTERVAL_MS);
+
+// Best-effort fast path for the platforms where 'visibilitychange' *does* fire correctly (desktop
+// browsers, Android, and even iOS in an ordinary - not home-screen-installed - Safari tab): push
+// a pending change on the way into the background, and reconcile immediately on the way back
+// instead of waiting for the next interval tick. Throttled so rapid tab/app switching can't spam
+// Firestore reads.
 const RECONCILE_ON_RESUME_MIN_GAP_MS = 5000;
 let lastReconcileAtMs = 0;
 
-function reconcileOnResumeIfDue() {
+document.addEventListener('visibilitychange', () => {
   if (!currentUser) return;
+  if (document.visibilityState === 'hidden') {
+    if (documentDirtyForCloud) pushDocumentToCloud();
+    return;
+  }
   const now = Date.now();
   if (now - lastReconcileAtMs < RECONCILE_ON_RESUME_MIN_GAP_MS) return;
   lastReconcileAtMs = now;
   reconcileWithCloud();
-}
-
-// 'visibilitychange' (rather than 'beforeunload', which mobile browsers don't reliably fire)
-// does double duty here: flushing a pending document push on the way into the background (the
-// common case of closing the tab/switching apps between one 30-second interval tick and the
-// next), and re-checking the cloud on the way back - see reconcileWithCloud() above for why that
-// second half matters even on the very same device.
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') {
-    if (documentDirtyForCloud) pushDocumentToCloud();
-  } else if (document.visibilityState === 'visible') {
-    reconcileOnResumeIfDue();
-  }
 });
 
 function updateAuthMenuUI() {
