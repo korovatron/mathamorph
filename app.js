@@ -648,20 +648,50 @@ async function reconcileWithCloud() {
 // resume (see https://bugs.webkit.org/show_bug.cgi?id=180523), unlike an ordinary Safari tab. A
 // plain setInterval doesn't depend on that API at all - iOS genuinely suspends JS execution while
 // such an app is backgrounded (this timer included), resuming it only once actually foregrounded.
-//
-// Everywhere else (desktop browsers, Android, and iOS Safari when *not* added to the home
-// screen), document.hidden is reliable - and those background tabs/windows do keep running timers
-// indefinitely rather than suspending them, so without this check, simply leaving a signed-in tab
-// open overnight would poll Firestore for no reason all night. Skipping the tick while hidden on
-// every platform except the one that actually needs the unconditional version keeps that cost
-// down to "only while someone could plausibly be looking at it" everywhere but there.
 const isIOSStandalonePWA = window.navigator.standalone === true;
+
+// Neither of these applies to iOS standalone PWAs below - see isIOSStandalonePWA above.
+//
+// document.hidden is reliable everywhere else, and those background tabs/windows keep running
+// timers indefinitely rather than suspending them, so without this, simply switching away from
+// (or minimising) a signed-in tab would poll Firestore for no reason the whole time it sat there.
+//
+// But document.hidden alone doesn't cover someone just leaving this as the one open, on-screen,
+// foreground tab overnight without touching it - that's still "visible" the entire time. Real
+// user input (keyboard/mouse/touch) is tracked for that case instead; it's reliable on every
+// platform that can generate it at all, which conveniently includes iOS standalone too - it just
+// never gets the chance to matter there, since this interval isn't even running while that
+// platform is genuinely backgrounded in the first place.
+const IDLE_SUSPEND_THRESHOLD_MS = 5 * 60 * 1000;
+let lastUserActivityAtMs = Date.now();
+for (const eventName of ['keydown', 'mousedown', 'pointerdown', 'touchstart']) {
+  document.addEventListener(
+    eventName,
+    () => {
+      const wasIdle = Date.now() - lastUserActivityAtMs > IDLE_SUSPEND_THRESHOLD_MS;
+      lastUserActivityAtMs = Date.now();
+      // Catch up immediately on the first sign of life after a genuinely idle stretch, rather
+      // than leaving the document looking stale for up to another 30 seconds.
+      if (wasIdle) reconcileIfDue();
+    },
+    { passive: true }
+  );
+}
 
 setInterval(() => {
   if (!currentUser) return;
-  if (!isIOSStandalonePWA && document.hidden) return;
-  if (documentDirtyForCloud) pushDocumentToCloud();
-  else reconcileWithCloud();
+  // A pending edit always gets sent, regardless of hidden/idle state - this only ever suppresses
+  // the pull side (reconciling against possible *remote* changes), never the safety of syncing
+  // the user's own local work.
+  if (documentDirtyForCloud) {
+    pushDocumentToCloud();
+    return;
+  }
+  if (!isIOSStandalonePWA) {
+    if (document.hidden) return;
+    if (Date.now() - lastUserActivityAtMs > IDLE_SUSPEND_THRESHOLD_MS) return;
+  }
+  reconcileWithCloud();
 }, DOCUMENT_CLOUD_SYNC_INTERVAL_MS);
 
 // Best-effort fast path for the platforms where 'visibilitychange' *does* fire correctly (desktop
@@ -672,16 +702,21 @@ setInterval(() => {
 const RECONCILE_ON_RESUME_MIN_GAP_MS = 5000;
 let lastReconcileAtMs = 0;
 
+function reconcileIfDue() {
+  if (!currentUser) return;
+  const now = Date.now();
+  if (now - lastReconcileAtMs < RECONCILE_ON_RESUME_MIN_GAP_MS) return;
+  lastReconcileAtMs = now;
+  reconcileWithCloud();
+}
+
 document.addEventListener('visibilitychange', () => {
   if (!currentUser) return;
   if (document.visibilityState === 'hidden') {
     if (documentDirtyForCloud) pushDocumentToCloud();
     return;
   }
-  const now = Date.now();
-  if (now - lastReconcileAtMs < RECONCILE_ON_RESUME_MIN_GAP_MS) return;
-  lastReconcileAtMs = now;
-  reconcileWithCloud();
+  reconcileIfDue();
 });
 
 function updateAuthMenuUI() {
