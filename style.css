@@ -681,7 +681,12 @@ math-field::part(menu-item):hover {
 .manage-snippets-dialog {
   width: 32rem;
   max-width: 90vw;
-  max-height: 80vh;
+  /* A fixed height (not just a cap) rather than one that follows the content - a <dialog> is
+     re-centered in the viewport every time its size changes, so if the list's height varied
+     with how many snippets the current search/category filter matched, picking a category
+     with fewer (or more) results would shift the whole dialog - including the dropdown the
+     mouse is still sitting over - right out from under the pointer. */
+  height: min(80vh, 34rem);
 }
 
 .manage-snippets-dialog[open] {
