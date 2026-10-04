@@ -1179,3 +1179,37 @@ math-field::part(menu-item):hover {
 #status.error {
   color: var(--error);
 }
+
+.app-footer {
+  max-width: 90rem;
+  margin: 0 auto;
+  padding: 1.5rem 2rem 2rem;
+  box-sizing: border-box;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.app-footer p {
+  margin: 0;
+}
+
+.app-footer-copyright {
+  color: var(--text);
+  font-weight: bold;
+}
+
+:root[data-theme='dark'] .app-footer-copyright {
+  color: #ffffff;
+}
+
+.app-footer a {
+  color: var(--field-border-focus);
+  text-decoration: none;
+}
+
+.app-footer a:hover,
+.app-footer a:focus-visible {
+  text-decoration: underline;
+}
