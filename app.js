@@ -438,10 +438,6 @@ function removeLine(line) {
 }
 
 const DOCUMENT_STORAGE_KEY = 'mathamorph-document';
-// Tracked alongside the document itself purely so a signed-in device can tell, at sign-in time,
-// whether its own local copy or the cloud's is more recent - see the document half of
-// onAuthStateChanged further down.
-const DOCUMENT_UPDATED_AT_STORAGE_KEY = 'mathamorph-document-updated-at';
 
 function serializeDocument() {
   return allLines().map((line) => ({ latex: mathFieldIn(line).value }));
@@ -464,15 +460,15 @@ function buildDocument(entries, { focus = true } = {}) {
   if (focus) firstField.focus();
 }
 
-// Auto-persists the live document to localStorage, so it survives reloads/browser restarts.
+// Auto-persists the live document to localStorage, so it survives reloads/browser restarts. This
+// is deliberately local-only, even when signed in - see the big comment above the cloud sync
+// section further down for why only the snippet library is synced across devices.
 let persistTimeout = null;
 function schedulePersist() {
   hideExamplesHint();
   clearTimeout(persistTimeout);
   persistTimeout = setTimeout(() => {
     localStorage.setItem(DOCUMENT_STORAGE_KEY, JSON.stringify(serializeDocument()));
-    localStorage.setItem(DOCUMENT_UPDATED_AT_STORAGE_KEY, String(Date.now()));
-    documentDirtyForCloud = true;
   }, 400);
 }
 
@@ -512,12 +508,22 @@ function createSnippet(name, latex, tags = []) {
 // is untouched - everything above this point already works entirely offline via localStorage,
 // and that keeps working exactly as before for anyone who never signs in.
 //
-// The snippet library and the live document are both stored as fields in one Firestore document
-// per user (users/{uid}.snippets / .document) rather than separate documents - every snippet
-// mutation already funnels through saveSnippets() with the full array, and the live document
-// through schedulePersist(), so this lets the sync layer hang off those two existing functions
-// instead of diffing individual changes into separate writes. Every setDoc below passes
-// { merge: true } so a snippets write can never clobber the document field or vice versa.
+// Only the snippet library is synced - the live document (the scratchpad) deliberately isn't,
+// even though an earlier version of this feature tried that too. Snippets are discrete, named,
+// deliberately-saved items, so merging two devices' libraries (union by id) is always safe -
+// nothing is ever silently discarded. The scratchpad has no such structure, just one mutable
+// blob per device, so any cross-device sync of it reduces to "whichever write lands last wins" -
+// which genuinely lost a user's work in practice (device A edits, then device B - which made no
+// edits of its own, just happened to read a stale, pre-A-edit copy of the cloud - decided its
+// own older content looked "newer than what it read" and pushed it, stomping A's edit once B's
+// stale write reached the cloud after A's did). The scratchpad already autosaves to localStorage
+// per-device regardless (see schedulePersist) - if it's worth keeping across devices, that's what
+// the snippet library is for.
+//
+// The whole library is stored as a single field in one Firestore document per user
+// (users/{uid}.snippets) - every mutation already funnels through saveSnippets() with the full
+// array, so the entire sync layer hangs off that one function. setDoc uses { merge: true } so a
+// snippets write can never clobber any other top-level field that might exist on the document.
 //
 // The apiKey/appId below aren't secrets - anyone can read them straight out of this file (or any
 // Firebase web app's source) with no special access. What actually protects user data is the
@@ -563,162 +569,6 @@ function applyIncomingSnippets(snippets) {
   if (manageSnippetsDialog.open) renderManageSnippetsList();
 }
 
-// Unlike snippets, the live document is only ever pulled from the cloud periodically/on sign-in,
-// never kept live via a realtime listener - this is a single-user scratchpad (a teacher picking
-// up where they left off on another device), not a collaborative document, and buildDocument()
-// replaces every field wholesale, which would steal focus and interrupt typing if it ever fired
-// while someone was mid-edit. A stale-by-a-few-seconds cloud copy doesn't matter, but a Firestore
-// write on every keystroke would, hence the shared interval below rather than anything livelier.
-const DOCUMENT_CLOUD_SYNC_INTERVAL_MS = 30000;
-let documentDirtyForCloud = false;
-
-function pushDocumentToCloud() {
-  if (!currentUser) return;
-  documentDirtyForCloud = false;
-  setDoc(
-    doc(db, 'users', currentUser.uid),
-    { document: serializeDocument(), documentUpdatedAt: serverTimestamp() },
-    { merge: true }
-  ).catch((err) => console.error(err));
-}
-
-// Seeds the cloud on first-ever sign-in, otherwise merges snippets and reconciles the document
-// against whatever's currently in Firestore (see onAuthStateChanged below for the snippets half -
-// a live listener keeps those current automatically once signed in).
-async function reconcileWithCloud() {
-  if (!currentUser) return;
-  const userDocRef = doc(db, 'users', currentUser.uid);
-  try {
-    const snap = await getDoc(userDocRef);
-    if (!snap.exists()) {
-      // First-ever sign-in for this account - seed the cloud with whatever's already local
-      // rather than starting from an empty library/document.
-      await setDoc(userDocRef, {
-        snippets: loadSnippets(),
-        snippetsUpdatedAt: serverTimestamp(),
-        document: serializeDocument(),
-        documentUpdatedAt: serverTimestamp(),
-      });
-      return;
-    }
-    const data = snap.data();
-
-    // Snippets the cloud doesn't know about yet (e.g. first sign-in on a second device, or
-    // local edits made while this device was offline): merge rather than silently discarding
-    // either side - union by id, then push the merged result back up.
-    const cloudSnippets = Array.isArray(data.snippets) ? data.snippets : [];
-    const cloudIds = new Set(cloudSnippets.map((s) => s.id));
-    const localOnly = loadSnippets().filter((s) => !cloudIds.has(s.id));
-    const mergedSnippets = [...cloudSnippets, ...localOnly];
-    applyIncomingSnippets(mergedSnippets);
-    if (localOnly.length > 0) {
-      await setDoc(userDocRef, { snippets: mergedSnippets, snippetsUpdatedAt: serverTimestamp() }, { merge: true });
-    }
-
-    // The document isn't a set of discrete named items like snippets, so there's nothing
-    // sensible to union - just whichever copy was edited more recently wins. A device that's
-    // never locally saved a document (no DOCUMENT_UPDATED_AT_STORAGE_KEY yet - still just
-    // showing the worked examples) always loses to a real cloud copy, if there is one.
-    const cloudDocument = Array.isArray(data.document) ? data.document : null;
-    const cloudUpdatedAtMs = data.documentUpdatedAt?.toMillis?.() ?? 0;
-    const localUpdatedAtMs = Number(localStorage.getItem(DOCUMENT_UPDATED_AT_STORAGE_KEY)) || 0;
-    if (cloudDocument && cloudUpdatedAtMs > localUpdatedAtMs) {
-      if (JSON.stringify(cloudDocument) !== JSON.stringify(serializeDocument())) {
-        buildDocument(cloudDocument);
-        hideExamplesHint();
-      }
-      localStorage.setItem(DOCUMENT_STORAGE_KEY, JSON.stringify(cloudDocument));
-      localStorage.setItem(DOCUMENT_UPDATED_AT_STORAGE_KEY, String(cloudUpdatedAtMs));
-    } else if (localUpdatedAtMs > 0) {
-      // Local is newer (or the cloud has nothing yet) - push now rather than waiting for the
-      // next tick, so another device checking right after sees it already.
-      pushDocumentToCloud();
-    }
-  } catch (err) {
-    console.error(err);
-    showStatus('Could not load your synced snippets.', true);
-  }
-}
-
-// Push if there's something new to send up; otherwise use the same tick to pull, in case another
-// device changed the document while this one sat idle. This interval - not any visibility/focus
-// event - is the *primary* way a backgrounded device notices a remote change on iOS standalone
-// home-screen PWAs specifically: WebKit has a long-standing bug there where 'visibilitychange'
-// (and 'focus'/'pageshow', and even document.hidden itself) doesn't fire/update reliably on
-// resume (see https://bugs.webkit.org/show_bug.cgi?id=180523), unlike an ordinary Safari tab. A
-// plain setInterval doesn't depend on that API at all - iOS genuinely suspends JS execution while
-// such an app is backgrounded (this timer included), resuming it only once actually foregrounded.
-const isIOSStandalonePWA = window.navigator.standalone === true;
-
-// Neither of these applies to iOS standalone PWAs below - see isIOSStandalonePWA above.
-//
-// document.hidden is reliable everywhere else, and those background tabs/windows keep running
-// timers indefinitely rather than suspending them, so without this, simply switching away from
-// (or minimising) a signed-in tab would poll Firestore for no reason the whole time it sat there.
-//
-// But document.hidden alone doesn't cover someone just leaving this as the one open, on-screen,
-// foreground tab overnight without touching it - that's still "visible" the entire time. Real
-// user input (keyboard/mouse/touch) is tracked for that case instead; it's reliable on every
-// platform that can generate it at all, which conveniently includes iOS standalone too - it just
-// never gets the chance to matter there, since this interval isn't even running while that
-// platform is genuinely backgrounded in the first place.
-const IDLE_SUSPEND_THRESHOLD_MS = 5 * 60 * 1000;
-let lastUserActivityAtMs = Date.now();
-for (const eventName of ['keydown', 'mousedown', 'pointerdown', 'touchstart']) {
-  document.addEventListener(
-    eventName,
-    () => {
-      const wasIdle = Date.now() - lastUserActivityAtMs > IDLE_SUSPEND_THRESHOLD_MS;
-      lastUserActivityAtMs = Date.now();
-      // Catch up immediately on the first sign of life after a genuinely idle stretch, rather
-      // than leaving the document looking stale for up to another 30 seconds.
-      if (wasIdle) reconcileIfDue();
-    },
-    { passive: true }
-  );
-}
-
-setInterval(() => {
-  if (!currentUser) return;
-  // A pending edit always gets sent, regardless of hidden/idle state - this only ever suppresses
-  // the pull side (reconciling against possible *remote* changes), never the safety of syncing
-  // the user's own local work.
-  if (documentDirtyForCloud) {
-    pushDocumentToCloud();
-    return;
-  }
-  if (!isIOSStandalonePWA) {
-    if (document.hidden) return;
-    if (Date.now() - lastUserActivityAtMs > IDLE_SUSPEND_THRESHOLD_MS) return;
-  }
-  reconcileWithCloud();
-}, DOCUMENT_CLOUD_SYNC_INTERVAL_MS);
-
-// Best-effort fast path for the platforms where 'visibilitychange' *does* fire correctly (desktop
-// browsers, Android, and even iOS in an ordinary - not home-screen-installed - Safari tab): push
-// a pending change on the way into the background, and reconcile immediately on the way back
-// instead of waiting for the next interval tick. Throttled so rapid tab/app switching can't spam
-// Firestore reads.
-const RECONCILE_ON_RESUME_MIN_GAP_MS = 5000;
-let lastReconcileAtMs = 0;
-
-function reconcileIfDue() {
-  if (!currentUser) return;
-  const now = Date.now();
-  if (now - lastReconcileAtMs < RECONCILE_ON_RESUME_MIN_GAP_MS) return;
-  lastReconcileAtMs = now;
-  reconcileWithCloud();
-}
-
-document.addEventListener('visibilitychange', () => {
-  if (!currentUser) return;
-  if (document.visibilityState === 'hidden') {
-    if (documentDirtyForCloud) pushDocumentToCloud();
-    return;
-  }
-  reconcileIfDue();
-});
-
 function updateAuthMenuUI() {
   authToggleLabel.textContent = currentUser ? 'Sign out' : 'Sign in to sync snippets';
   authToggleBtn.title = currentUser
@@ -755,13 +605,35 @@ onAuthStateChanged(auth, async (user) => {
   updateAuthMenuUI();
   if (!user) return;
 
-  await reconcileWithCloud();
+  const userDocRef = doc(db, 'users', user.uid);
+  try {
+    const snap = await getDoc(userDocRef);
+    if (!snap.exists()) {
+      // First-ever sign-in for this account - seed the cloud with whatever's already local
+      // rather than starting from an empty library.
+      await setDoc(userDocRef, { snippets: loadSnippets(), snippetsUpdatedAt: serverTimestamp() });
+    } else {
+      // Signing in on a device that already has local snippets the cloud doesn't know about yet
+      // (e.g. first sign-in on a second device): merge rather than silently discarding either
+      // side - union by id, then push the merged result back up.
+      const cloudSnippets = Array.isArray(snap.data().snippets) ? snap.data().snippets : [];
+      const cloudIds = new Set(cloudSnippets.map((s) => s.id));
+      const localOnly = loadSnippets().filter((s) => !cloudIds.has(s.id));
+      const mergedSnippets = [...cloudSnippets, ...localOnly];
+      applyIncomingSnippets(mergedSnippets);
+      if (localOnly.length > 0) {
+        await setDoc(userDocRef, { snippets: mergedSnippets, snippetsUpdatedAt: serverTimestamp() }, { merge: true });
+      }
+    }
+  } catch (err) {
+    console.error(err);
+    showStatus('Could not load your synced snippets.', true);
+  }
 
-  // From here on, any snippet change made on *another* signed-in device arrives here live - no
-  // manual "refresh" or re-opening the app needed. The document deliberately isn't included in
-  // this listener - see the comment above DOCUMENT_CLOUD_PUSH_INTERVAL_MS.
+  // From here on, any change made on *another* signed-in device arrives here live - no manual
+  // "refresh" or re-opening the app needed.
   unsubscribeSnippetsListener = onSnapshot(
-    doc(db, 'users', user.uid),
+    userDocRef,
     (snap) => {
       if (!snap.exists()) return;
       applyIncomingSnippets(Array.isArray(snap.data().snippets) ? snap.data().snippets : []);
@@ -2212,8 +2084,8 @@ aboutDialog.innerHTML = `
     our companion Argand diagram plotter, for visualising.
   </p>
   <p class="about-description">
-    Sign in with Google (from the menu) to sync your snippet library and equations across your
-    devices - see <strong>Privacy</strong> in the menu for details.
+    Sign in with Google (from the menu) to sync your snippet library across your devices - see
+    <strong>Privacy</strong> in the menu for details.
   </p>
   <p class="about-copyright">&copy; 2026 Neil Kendall</p>
   <p class="about-link">
@@ -2313,10 +2185,10 @@ privacyDialog.innerHTML = `
   </p>
   <p class="about-description">
     Signing in with Google (from this menu) is entirely optional. It exists purely to sync your
-    snippet library and current equations across your own devices, via Google Sign-In and a
-    private, per-account database (Firestore, hosted in the EU) that only your account can read or
-    write. It's never shared, sold, or used for anything else. Signing out at any time stops
-    further syncing - your local work is unaffected either way.
+    snippet library across your own devices, via Google Sign-In and a private, per-account
+    database (Firestore, hosted in the EU) that only your account can read or write. It's never
+    shared, sold, or used for anything else. Signing out at any time stops further syncing - your
+    local work is unaffected either way.
   </p>
   <p class="about-description">
     Anonymous visit analytics (page views only - no cookies, no personal data) are collected via
