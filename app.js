@@ -587,12 +587,91 @@ setInterval(() => {
   if (documentDirtyForCloud) pushDocumentToCloud();
 }, DOCUMENT_CLOUD_PUSH_INTERVAL_MS);
 
-// Belt-and-braces flush for the common case of closing the tab/switching apps between one
-// interval tick and the next - 'visibilitychange' (rather than 'beforeunload', which mobile
-// browsers don't reliably fire) is the standard way to catch a "this might be the last moment
-// this page is around" signal.
+// Seeds the cloud on first-ever sign-in, otherwise merges snippets and reconciles the document
+// against whatever's currently in Firestore - see onAuthStateChanged below for the snippets half
+// (a live listener keeps those current automatically) and the 'visibilitychange' listener further
+// down for the document half. iOS in particular just freezes an already-open tab/PWA in the
+// background rather than reloading it, so returning to it wouldn't otherwise notice a document
+// change made on another device in the meantime without this being re-run on resume too.
+async function reconcileWithCloud() {
+  if (!currentUser) return;
+  const userDocRef = doc(db, 'users', currentUser.uid);
+  try {
+    const snap = await getDoc(userDocRef);
+    if (!snap.exists()) {
+      // First-ever sign-in for this account - seed the cloud with whatever's already local
+      // rather than starting from an empty library/document.
+      await setDoc(userDocRef, {
+        snippets: loadSnippets(),
+        snippetsUpdatedAt: serverTimestamp(),
+        document: serializeDocument(),
+        documentUpdatedAt: serverTimestamp(),
+      });
+      return;
+    }
+    const data = snap.data();
+
+    // Snippets the cloud doesn't know about yet (e.g. first sign-in on a second device, or
+    // local edits made while this device was offline): merge rather than silently discarding
+    // either side - union by id, then push the merged result back up.
+    const cloudSnippets = Array.isArray(data.snippets) ? data.snippets : [];
+    const cloudIds = new Set(cloudSnippets.map((s) => s.id));
+    const localOnly = loadSnippets().filter((s) => !cloudIds.has(s.id));
+    const mergedSnippets = [...cloudSnippets, ...localOnly];
+    applyIncomingSnippets(mergedSnippets);
+    if (localOnly.length > 0) {
+      await setDoc(userDocRef, { snippets: mergedSnippets, snippetsUpdatedAt: serverTimestamp() }, { merge: true });
+    }
+
+    // The document isn't a set of discrete named items like snippets, so there's nothing
+    // sensible to union - just whichever copy was edited more recently wins. A device that's
+    // never locally saved a document (no DOCUMENT_UPDATED_AT_STORAGE_KEY yet - still just
+    // showing the worked examples) always loses to a real cloud copy, if there is one.
+    const cloudDocument = Array.isArray(data.document) ? data.document : null;
+    const cloudUpdatedAtMs = data.documentUpdatedAt?.toMillis?.() ?? 0;
+    const localUpdatedAtMs = Number(localStorage.getItem(DOCUMENT_UPDATED_AT_STORAGE_KEY)) || 0;
+    if (cloudDocument && cloudUpdatedAtMs > localUpdatedAtMs) {
+      if (JSON.stringify(cloudDocument) !== JSON.stringify(serializeDocument())) {
+        buildDocument(cloudDocument);
+        hideExamplesHint();
+      }
+      localStorage.setItem(DOCUMENT_STORAGE_KEY, JSON.stringify(cloudDocument));
+      localStorage.setItem(DOCUMENT_UPDATED_AT_STORAGE_KEY, String(cloudUpdatedAtMs));
+    } else if (localUpdatedAtMs > 0) {
+      // Local is newer (or the cloud has nothing yet) - push now rather than waiting for the
+      // next 30-second tick, so another device checking right after sees it already.
+      pushDocumentToCloud();
+    }
+  } catch (err) {
+    console.error(err);
+    showStatus('Could not load your synced snippets.', true);
+  }
+}
+
+// Throttled so rapid tab/app switching can't spam Firestore reads - a resume that happens within
+// a few seconds of the last check has nothing new to find anyway.
+const RECONCILE_ON_RESUME_MIN_GAP_MS = 5000;
+let lastReconcileAtMs = 0;
+
+function reconcileOnResumeIfDue() {
+  if (!currentUser) return;
+  const now = Date.now();
+  if (now - lastReconcileAtMs < RECONCILE_ON_RESUME_MIN_GAP_MS) return;
+  lastReconcileAtMs = now;
+  reconcileWithCloud();
+}
+
+// 'visibilitychange' (rather than 'beforeunload', which mobile browsers don't reliably fire)
+// does double duty here: flushing a pending document push on the way into the background (the
+// common case of closing the tab/switching apps between one 30-second interval tick and the
+// next), and re-checking the cloud on the way back - see reconcileWithCloud() above for why that
+// second half matters even on the very same device.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden' && documentDirtyForCloud) pushDocumentToCloud();
+  if (document.visibilityState === 'hidden') {
+    if (documentDirtyForCloud) pushDocumentToCloud();
+  } else if (document.visibilityState === 'visible') {
+    reconcileOnResumeIfDue();
+  }
 });
 
 function updateAuthMenuUI() {
@@ -631,63 +710,13 @@ onAuthStateChanged(auth, async (user) => {
   updateAuthMenuUI();
   if (!user) return;
 
-  const userDocRef = doc(db, 'users', user.uid);
-  try {
-    const snap = await getDoc(userDocRef);
-    if (!snap.exists()) {
-      // First-ever sign-in for this account - seed the cloud with whatever's already local
-      // rather than starting from an empty library/document.
-      await setDoc(userDocRef, {
-        snippets: loadSnippets(),
-        snippetsUpdatedAt: serverTimestamp(),
-        document: serializeDocument(),
-        documentUpdatedAt: serverTimestamp(),
-      });
-    } else {
-      const data = snap.data();
-
-      // Signing in on a device that already has local snippets the cloud doesn't know about yet
-      // (e.g. first sign-in on a second device): merge rather than silently discarding either
-      // side - union by id, then push the merged result back up.
-      const cloudSnippets = Array.isArray(data.snippets) ? data.snippets : [];
-      const cloudIds = new Set(cloudSnippets.map((s) => s.id));
-      const localOnly = loadSnippets().filter((s) => !cloudIds.has(s.id));
-      const mergedSnippets = [...cloudSnippets, ...localOnly];
-      applyIncomingSnippets(mergedSnippets);
-      if (localOnly.length > 0) {
-        await setDoc(userDocRef, { snippets: mergedSnippets, snippetsUpdatedAt: serverTimestamp() }, { merge: true });
-      }
-
-      // The document isn't a set of discrete named items like snippets, so there's nothing
-      // sensible to union - just whichever copy was edited more recently wins. A device that's
-      // never locally saved a document (no DOCUMENT_UPDATED_AT_STORAGE_KEY yet - still just
-      // showing the worked examples) always loses to a real cloud copy, if there is one.
-      const cloudDocument = Array.isArray(data.document) ? data.document : null;
-      const cloudUpdatedAtMs = data.documentUpdatedAt?.toMillis?.() ?? 0;
-      const localUpdatedAtMs = Number(localStorage.getItem(DOCUMENT_UPDATED_AT_STORAGE_KEY)) || 0;
-      if (cloudDocument && cloudUpdatedAtMs > localUpdatedAtMs) {
-        if (JSON.stringify(cloudDocument) !== JSON.stringify(serializeDocument())) {
-          buildDocument(cloudDocument);
-          hideExamplesHint();
-        }
-        localStorage.setItem(DOCUMENT_STORAGE_KEY, JSON.stringify(cloudDocument));
-        localStorage.setItem(DOCUMENT_UPDATED_AT_STORAGE_KEY, String(cloudUpdatedAtMs));
-      } else if (localUpdatedAtMs > 0) {
-        // Local is newer (or the cloud has nothing yet) - push now rather than waiting for the
-        // next 30-second tick, so a second device signing in right after sees it already.
-        pushDocumentToCloud();
-      }
-    }
-  } catch (err) {
-    console.error(err);
-    showStatus('Could not load your synced snippets.', true);
-  }
+  await reconcileWithCloud();
 
   // From here on, any snippet change made on *another* signed-in device arrives here live - no
   // manual "refresh" or re-opening the app needed. The document deliberately isn't included in
   // this listener - see the comment above DOCUMENT_CLOUD_PUSH_INTERVAL_MS.
   unsubscribeSnippetsListener = onSnapshot(
-    userDocRef,
+    doc(db, 'users', user.uid),
     (snap) => {
       if (!snap.exists()) return;
       applyIncomingSnippets(Array.isArray(snap.data().snippets) ? snap.data().snippets : []);
