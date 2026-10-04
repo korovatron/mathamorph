@@ -2021,12 +2021,11 @@ manageSnippetsDialog.innerHTML = `
   <h2>Manage snippets</h2>
   <div class="manage-snippets-filters">
     <input type="search" class="manage-snippets-search" placeholder="Search by name&hellip;" aria-label="Search snippets by name" />
-    <select class="manage-snippets-category-filter themed-select" aria-label="Filter by category">
-      <option value="">All categories</option>
-    </select>
-  </div>
-  <datalist id="manage-snippet-category-list"></datalist>
-  <div class="manage-snippets-list"></div>
+      <select class="manage-snippets-category-filter themed-select" aria-label="Filter by category">
+        <option value="">All categories</option>
+      </select>
+    </div>
+    <div class="manage-snippets-list"></div>
   <div class="app-dialog-actions">
     <button type="button" class="manage-snippets-close">Close</button>
   </div>
@@ -2036,7 +2035,6 @@ enableClickOutsideToClose(manageSnippetsDialog);
 const manageSnippetsList = manageSnippetsDialog.querySelector('.manage-snippets-list');
 const manageSnippetsSearch = manageSnippetsDialog.querySelector('.manage-snippets-search');
 const manageSnippetsCategoryFilter = manageSnippetsDialog.querySelector('.manage-snippets-category-filter');
-const manageSnippetCategoryList = manageSnippetsDialog.querySelector('#manage-snippet-category-list');
 manageSnippetsDialog.querySelector('.manage-snippets-close').addEventListener('click', () => manageSnippetsDialog.close());
 manageSnippetsSearch.addEventListener('input', renderManageSnippetsList);
 manageSnippetsCategoryFilter.addEventListener('change', renderManageSnippetsList);
@@ -2056,7 +2054,7 @@ function buildManageSnippetPreview(snippet) {
   return preview;
 }
 
-function buildManageSnippetRow(snippet) {
+function buildManageSnippetRow(snippet, categories) {
   const row = document.createElement('div');
   row.className = 'manage-snippet-row';
 
@@ -2079,28 +2077,54 @@ function buildManageSnippetRow(snippet) {
     nameInput.value = target ? target.name : snippet.name;
   });
 
-  const categoryInput = document.createElement('input');
-  categoryInput.className = 'manage-snippet-category';
-  categoryInput.type = 'text';
-  categoryInput.placeholder = 'No category';
-  categoryInput.setAttribute('list', 'manage-snippet-category-list');
-  categoryInput.setAttribute('aria-label', 'Snippet category');
-  applyNoPasswordManagerAttrs(categoryInput);
-  categoryInput.value = snippet.category || '';
-  // Re-renders the whole list on change (not just updating this row) so moving a snippet to a
-  // different group, or into/out of the last snippet of a now-empty category, is reflected in
-  // the grouping and filter dropdown immediately.
-  categoryInput.addEventListener('change', () => {
+  // A themed <select> (identical to the category filter and the Save as snippet dialog's
+  // category field) rather than an `<input list=...>` combo - the latter's native suggestions
+  // popup can't be restyled and looks out of place next to everything else in the app. The
+  // sentinel "+ New category…" option reveals a plain text input for typing a new one.
+  const categorySelect = document.createElement('select');
+  categorySelect.className = 'manage-snippet-category';
+  categorySelect.setAttribute('aria-label', 'Snippet category');
+  categorySelect.replaceChildren(
+    makeOption('', 'No category'),
+    ...categories.map((category) => makeOption(category, category)),
+    makeOption(NEW_CATEGORY_OPTION_VALUE, '+ New category\u2026')
+  );
+  categorySelect.value = (snippet.category || '').trim();
+
+  const newCategoryInput = document.createElement('input');
+  newCategoryInput.type = 'text';
+  newCategoryInput.className = 'manage-snippet-category';
+  newCategoryInput.placeholder = 'New category name';
+  newCategoryInput.hidden = true;
+  newCategoryInput.setAttribute('aria-label', 'New category name');
+  applyNoPasswordManagerAttrs(newCategoryInput);
+
+  // Re-renders the whole list (not just this row) so moving a snippet to a different group, or
+  // into/out of the last snippet of a now-empty category, is reflected in the grouping and
+  // filter dropdown immediately.
+  function saveCategory(category) {
     const current = loadSnippets();
     const target = current.find((s) => s.id === snippet.id);
     if (target) {
-      target.category = categoryInput.value.trim();
+      target.category = category;
       saveSnippets(current);
     }
     renderManageSnippetsList();
+  }
+
+  categorySelect.addEventListener('change', () => {
+    if (categorySelect.value === NEW_CATEGORY_OPTION_VALUE) {
+      newCategoryInput.hidden = false;
+      newCategoryInput.value = '';
+      newCategoryInput.focus();
+      return;
+    }
+    saveCategory(categorySelect.value);
   });
 
-  fields.append(nameInput, categoryInput);
+  newCategoryInput.addEventListener('change', () => saveCategory(newCategoryInput.value.trim()));
+
+  fields.append(nameInput, categorySelect, newCategoryInput);
 
   const deleteBtn = document.createElement('button');
   deleteBtn.type = 'button';
@@ -2136,8 +2160,6 @@ function renderManageSnippetsList() {
   manageSnippetsCategoryFilter.value = [...manageSnippetsCategoryFilter.options].some((o) => o.value === previousFilter)
     ? previousFilter
     : '';
-
-  manageSnippetCategoryList.replaceChildren(...categories.map((category) => makeOption(category, '')));
 
   manageSnippetsList.innerHTML = '';
 
@@ -2190,7 +2212,7 @@ function renderManageSnippetsList() {
       manageSnippetsList.appendChild(heading);
     }
     for (const snippet of groups.get(label)) {
-      manageSnippetsList.appendChild(buildManageSnippetRow(snippet));
+      manageSnippetsList.appendChild(buildManageSnippetRow(snippet, categories));
     }
   }
 }
