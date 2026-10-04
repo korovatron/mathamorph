@@ -438,6 +438,10 @@ function removeLine(line) {
 }
 
 const DOCUMENT_STORAGE_KEY = 'mathamorph-document';
+// Tracked alongside the document itself purely so a signed-in device can tell, at sign-in time,
+// whether its own local copy or the cloud's is more recent - see the document half of
+// onAuthStateChanged further down.
+const DOCUMENT_UPDATED_AT_STORAGE_KEY = 'mathamorph-document-updated-at';
 
 function serializeDocument() {
   return allLines().map((line) => ({ latex: mathFieldIn(line).value }));
@@ -467,6 +471,8 @@ function schedulePersist() {
   clearTimeout(persistTimeout);
   persistTimeout = setTimeout(() => {
     localStorage.setItem(DOCUMENT_STORAGE_KEY, JSON.stringify(serializeDocument()));
+    localStorage.setItem(DOCUMENT_UPDATED_AT_STORAGE_KEY, String(Date.now()));
+    documentDirtyForCloud = true;
   }, 400);
 }
 
@@ -506,10 +512,12 @@ function createSnippet(name, latex, tags = []) {
 // is untouched - everything above this point already works entirely offline via localStorage,
 // and that keeps working exactly as before for anyone who never signs in.
 //
-// The whole snippet library is stored as a single field in one Firestore document per user
-// (users/{uid}.snippets) rather than one document per snippet - every mutation already funnels
-// through saveSnippets() with the full array, so this lets the entire sync layer hang off that
-// one function instead of diffing individual adds/renames/deletes into separate writes.
+// The snippet library and the live document are both stored as fields in one Firestore document
+// per user (users/{uid}.snippets / .document) rather than separate documents - every snippet
+// mutation already funnels through saveSnippets() with the full array, and the live document
+// through schedulePersist(), so this lets the sync layer hang off those two existing functions
+// instead of diffing individual changes into separate writes. Every setDoc below passes
+// { merge: true } so a snippets write can never clobber the document field or vice versa.
 //
 // The apiKey/appId below aren't secrets - anyone can read them straight out of this file (or any
 // Firebase web app's source) with no special access. What actually protects user data is the
@@ -537,7 +545,7 @@ let unsubscribeSnippetsListener = null;
 // it via the status line.
 function pushSnippetsToCloud(snippets) {
   if (!currentUser) return;
-  setDoc(doc(db, 'users', currentUser.uid), { snippets, updatedAt: serverTimestamp() }).catch((err) => {
+  setDoc(doc(db, 'users', currentUser.uid), { snippets, snippetsUpdatedAt: serverTimestamp() }, { merge: true }).catch((err) => {
     console.error(err);
     showStatus('Could not sync snippets to your account - check your connection.', true);
   });
@@ -554,6 +562,38 @@ function applyIncomingSnippets(snippets) {
   localStorage.setItem(SNIPPETS_STORAGE_KEY, incoming);
   if (manageSnippetsDialog.open) renderManageSnippetsList();
 }
+
+// Unlike snippets, the live document is only ever pulled from the cloud at startup/sign-in, never
+// kept live via a realtime listener - this is a single-user scratchpad (a teacher picking up
+// where they left off on another device), not a collaborative document, and buildDocument()
+// replaces every field wholesale, which would steal focus and interrupt typing if it ever fired
+// while someone was mid-edit. Pushes, on the other hand, happen continuously in the background -
+// just infrequently (see DOCUMENT_CLOUD_PUSH_INTERVAL_MS), since a stale-by-a-few-seconds cloud
+// copy doesn't matter but a Firestore write on every keystroke would.
+const DOCUMENT_CLOUD_PUSH_INTERVAL_MS = 30000;
+let documentDirtyForCloud = false;
+
+function pushDocumentToCloud() {
+  if (!currentUser) return;
+  documentDirtyForCloud = false;
+  setDoc(
+    doc(db, 'users', currentUser.uid),
+    { document: serializeDocument(), documentUpdatedAt: serverTimestamp() },
+    { merge: true }
+  ).catch((err) => console.error(err));
+}
+
+setInterval(() => {
+  if (documentDirtyForCloud) pushDocumentToCloud();
+}, DOCUMENT_CLOUD_PUSH_INTERVAL_MS);
+
+// Belt-and-braces flush for the common case of closing the tab/switching apps between one
+// interval tick and the next - 'visibilitychange' (rather than 'beforeunload', which mobile
+// browsers don't reliably fire) is the standard way to catch a "this might be the last moment
+// this page is around" signal.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && documentDirtyForCloud) pushDocumentToCloud();
+});
 
 function updateAuthMenuUI() {
   authToggleLabel.textContent = currentUser ? 'Sign out' : 'Sign in to sync snippets';
@@ -591,19 +631,46 @@ onAuthStateChanged(auth, async (user) => {
     const snap = await getDoc(userDocRef);
     if (!snap.exists()) {
       // First-ever sign-in for this account - seed the cloud with whatever's already local
-      // rather than starting from an empty library.
-      await setDoc(userDocRef, { snippets: loadSnippets(), updatedAt: serverTimestamp() });
+      // rather than starting from an empty library/document.
+      await setDoc(userDocRef, {
+        snippets: loadSnippets(),
+        snippetsUpdatedAt: serverTimestamp(),
+        document: serializeDocument(),
+        documentUpdatedAt: serverTimestamp(),
+      });
     } else {
+      const data = snap.data();
+
       // Signing in on a device that already has local snippets the cloud doesn't know about yet
       // (e.g. first sign-in on a second device): merge rather than silently discarding either
       // side - union by id, then push the merged result back up.
-      const cloudSnippets = Array.isArray(snap.data().snippets) ? snap.data().snippets : [];
+      const cloudSnippets = Array.isArray(data.snippets) ? data.snippets : [];
       const cloudIds = new Set(cloudSnippets.map((s) => s.id));
       const localOnly = loadSnippets().filter((s) => !cloudIds.has(s.id));
-      const merged = [...cloudSnippets, ...localOnly];
-      applyIncomingSnippets(merged);
+      const mergedSnippets = [...cloudSnippets, ...localOnly];
+      applyIncomingSnippets(mergedSnippets);
       if (localOnly.length > 0) {
-        await setDoc(userDocRef, { snippets: merged, updatedAt: serverTimestamp() });
+        await setDoc(userDocRef, { snippets: mergedSnippets, snippetsUpdatedAt: serverTimestamp() }, { merge: true });
+      }
+
+      // The document isn't a set of discrete named items like snippets, so there's nothing
+      // sensible to union - just whichever copy was edited more recently wins. A device that's
+      // never locally saved a document (no DOCUMENT_UPDATED_AT_STORAGE_KEY yet - still just
+      // showing the worked examples) always loses to a real cloud copy, if there is one.
+      const cloudDocument = Array.isArray(data.document) ? data.document : null;
+      const cloudUpdatedAtMs = data.documentUpdatedAt?.toMillis?.() ?? 0;
+      const localUpdatedAtMs = Number(localStorage.getItem(DOCUMENT_UPDATED_AT_STORAGE_KEY)) || 0;
+      if (cloudDocument && cloudUpdatedAtMs > localUpdatedAtMs) {
+        if (JSON.stringify(cloudDocument) !== JSON.stringify(serializeDocument())) {
+          buildDocument(cloudDocument);
+          hideExamplesHint();
+        }
+        localStorage.setItem(DOCUMENT_STORAGE_KEY, JSON.stringify(cloudDocument));
+        localStorage.setItem(DOCUMENT_UPDATED_AT_STORAGE_KEY, String(cloudUpdatedAtMs));
+      } else if (localUpdatedAtMs > 0) {
+        // Local is newer (or the cloud has nothing yet) - push now rather than waiting for the
+        // next 30-second tick, so a second device signing in right after sees it already.
+        pushDocumentToCloud();
       }
     }
   } catch (err) {
@@ -611,8 +678,9 @@ onAuthStateChanged(auth, async (user) => {
     showStatus('Could not load your synced snippets.', true);
   }
 
-  // From here on, any change made on *another* signed-in device arrives here live - no manual
-  // "refresh" or re-opening the app needed.
+  // From here on, any snippet change made on *another* signed-in device arrives here live - no
+  // manual "refresh" or re-opening the app needed. The document deliberately isn't included in
+  // this listener - see the comment above DOCUMENT_CLOUD_PUSH_INTERVAL_MS.
   unsubscribeSnippetsListener = onSnapshot(
     userDocRef,
     (snap) => {
