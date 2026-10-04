@@ -2125,6 +2125,10 @@ aboutDialog.innerHTML = `
     <a href="https://www.korovatron.co.uk/komplexiti/" target="_blank" rel="noopener noreferrer">Komplexiti</a>,
     our companion Argand diagram plotter, for visualising.
   </p>
+  <p class="about-description">
+    Sign in with Google (from the menu) to sync your snippet library and equations across your
+    devices - see <strong>Privacy</strong> in the menu for details.
+  </p>
   <p class="about-copyright">&copy; 2026 Neil Kendall</p>
   <p class="about-link">
     <a href="https://www.korovatron.co.uk" target="_blank" rel="noopener noreferrer">More maths tools @ www.korovatron.co.uk</a>
