@@ -160,7 +160,6 @@ function selectionLatexFor(field) {
   const latex = field.getValue(range, 'latex');
   const normalized = latex && latex.trim() ? normalizeDifferentials(latex) : null;
   if (normalized) lastSelectionByField.set(field, { latex: normalized, range });
-  console.log('[debug] selectionLatexFor ->', normalized, 'cacheNow=', lastSelectionByField.get(field));
   return normalized;
 }
 
@@ -168,7 +167,6 @@ function getSelectionLatex() {
   if (!activeMathField) return null;
   const live = selectionLatexFor(activeMathField);
   const cached = lastSelectionByField.get(activeMathField)?.latex || null;
-  console.log('[debug] getSelectionLatex live=', live, 'cached=', cached, 'collapsed=', activeMathField.selectionIsCollapsed);
   return live || cached || null;
 }
 
@@ -331,6 +329,12 @@ function createLine(initialLatex) {
   // behaviour has proven unreliable enough elsewhere to replace (see the menu button below),
   // it's replaced here too - on both desktop and touch - so this app no longer depends on
   // MathLive's own in-field buttons at all, and isn't at the mercy of their behaviour changing.
+  //
+  // Looks up the field fresh (via mathFieldIn(line)) rather than closing over the "field"
+  // variable above: rebuildMathField() (see its own comment for why that's ever needed) replaces
+  // *only* the <math-field> element itself, swapping a new one into the line in place of this
+  // one - it doesn't recreate this button, so a captured reference would silently keep pointing
+  // at the old, now-detached element forever after, frozen at whatever it last contained.
   const keyboardBtn = document.createElement('button');
   keyboardBtn.type = 'button';
   keyboardBtn.className = 'keyboard-toggle-btn';
@@ -345,9 +349,10 @@ function createLine(initialLatex) {
     '<line x1="19.5" y1="9.5" x2="19.5" y2="9.5" stroke-width="2.4"/>' +
     '<line x1="7" y1="14.5" x2="17" y2="14.5"/></svg>';
   keyboardBtn.addEventListener('click', () => {
-    activeMathField = field;
-    field.focus();
-    field.executeCommand('toggleVirtualKeyboard');
+    const currentField = mathFieldIn(line);
+    activeMathField = currentField;
+    currentField.focus();
+    currentField.executeCommand('toggleVirtualKeyboard');
   });
 
   // Shows the equation full-screen (see openBoardMode) for displaying to a class on a
@@ -362,7 +367,7 @@ function createLine(initialLatex) {
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
     '<polyline points="9 3 3 3 3 9"/><polyline points="15 3 21 3 21 9"/>' +
     '<polyline points="21 15 21 21 15 21"/><polyline points="3 15 3 21 9 21"/></svg>';
-  boardModeBtn.addEventListener('click', () => openBoardMode(field));
+  boardModeBtn.addEventListener('click', () => openBoardMode(mathFieldIn(line)));
 
   // MathLive's touch handling is unreliable enough (long-press doesn't reach a "contextmenu"
   // event, and in practice doesn't reliably trigger a long-press gesture at all) that fighting
@@ -377,11 +382,12 @@ function createLine(initialLatex) {
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">' +
     '<line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>';
   menuBtn.addEventListener('click', () => {
-    activeMathField = field;
-    field.focus();
-    field.executeCommand('selectAll');
+    const currentField = mathFieldIn(line);
+    activeMathField = currentField;
+    currentField.focus();
+    currentField.executeCommand('selectAll');
     const rect = menuBtn.getBoundingClientRect();
-    openFieldMenu(field, rect.left, rect.bottom);
+    openFieldMenu(currentField, rect.left, rect.bottom);
   });
 
   actions.append(deleteBtn, boardModeBtn, keyboardBtn, menuBtn);
@@ -1581,14 +1587,14 @@ function downloadFile(filename, content, mimeType) {
 }
 
 function buildExportMenu(field) {
-  const latexForExport = () => selectionLatexFor(field) || field.value;
+  const latexForExport = selectionLatexFor(field) || field.value;
 
   const items = [
     {
       label: 'Copy as PNG',
       icon: MENU_ICON_IMAGE,
       onMenuSelect: async () => {
-        const latex = latexForExport();
+        const latex = latexForExport;
         if (!latex || !latex.trim()) {
           showStatus('Nothing to export.', true);
           return;
@@ -1608,7 +1614,7 @@ function buildExportMenu(field) {
       label: 'Download as SVG',
       icon: MENU_ICON_DOWNLOAD,
       onMenuSelect: async () => {
-        const latex = latexForExport();
+        const latex = latexForExport;
         if (!latex || !latex.trim()) {
           showStatus('Nothing to export.', true);
           return;
@@ -1628,7 +1634,7 @@ function buildExportMenu(field) {
 
   // Only offered when the exportable LaTeX (selection, or the whole field) is actually a
   // plottable equation - see graphitiModeFor for exactly what that means.
-  const graphitiMode = graphitiModeFor(latexForExport());
+  const graphitiMode = graphitiModeFor(latexForExport);
   if (graphitiMode) {
     // Kick the (tiny) LZString load off now, while the menu is open, so it's normally already
     // resolved by the time this item is actually clicked - see below for why that matters.
@@ -1637,7 +1643,7 @@ function buildExportMenu(field) {
       label: 'Open in Graphiti\u2026',
       icon: GRAPHITI_MENU_ICON,
       onMenuSelect: () => {
-        const latex = latexForExport();
+        const latex = latexForExport;
         // The tab has to be opened synchronously, right from this click, or most browsers'
         // popup blockers silently swallow it - awaiting LZString first and only then calling
         // window.open() would be too late. Opening it blank now and navigating it once the
