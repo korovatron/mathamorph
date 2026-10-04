@@ -799,6 +799,16 @@ math-field::part(menu-item):hover {
   line-height: 1.4;
 }
 
+.help-dialog-link {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.help-dialog-link a {
+  color: var(--field-border-focus);
+}
+
 /* Fills as much of the viewport as reasonably possible (rather than .app-dialog's small
    content-hugging min-width) so the equation inside can be scaled up to the largest size that
    still fits without clipping - see fitBoardField in app.js. */

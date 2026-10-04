@@ -262,27 +262,14 @@ function setupMathField(field, line) {
     patchContentOverflow(field);
   }, { once: true });
   field.addEventListener('beforeinput', (ev) => {
+    // Enter would otherwise insert a line break into the field - this app has no concept of a
+    // multi-line equation, so swallow it and leave the field untouched (new lines are only ever
+    // added explicitly, via "+ Add Equation" or the equivalent menu action).
     if (ev.inputType === 'insertLineBreak') {
       ev.preventDefault();
-      insertLineAfter(line);
     }
   });
   field.addEventListener('keydown', (ev) => {
-    // MathLive has no default keybinding for the numpad Enter key, so it never reaches
-    // beforeinput/insertLineBreak - handle it directly instead.
-    if (ev.code === 'NumpadEnter' && !ev.altKey && !ev.ctrlKey && !ev.metaKey && !ev.shiftKey) {
-      ev.preventDefault();
-      insertLineAfter(line);
-      return;
-    }
-    if (ev.key === 'Backspace' && field.selectionIsCollapsed && field.position === 0) {
-      const prev = line.previousElementSibling;
-      if (prev) {
-        ev.preventDefault();
-        mergeIntoPrevious(line, prev);
-        return;
-      }
-    }
     if (!ev.altKey && !ev.ctrlKey && !ev.metaKey) {
       if (isPlusKeyEvent(ev)) {
         // Let the "+"/"=" character insert as usual - just remember it might be the start of a
@@ -426,18 +413,6 @@ function insertLineAfter(line) {
   const newLine = createLine('');
   line.after(newLine);
   mathFieldIn(newLine).focus();
-  schedulePersist();
-}
-
-// Backspace at the start of a line folds its content onto the end of the line above.
-function mergeIntoPrevious(line, prevLine) {
-  const field = mathFieldIn(line);
-  const prevField = mathFieldIn(prevLine);
-  const joinPosition = prevField.lastOffset;
-  prevField.value = prevField.value + field.value;
-  line.remove();
-  prevField.focus();
-  prevField.position = joinPosition;
   schedulePersist();
 }
 
@@ -2014,6 +1989,11 @@ helpDialog.innerHTML = `
   <ul class="help-shortcuts">
     ${HELP_SHORTCUTS.map((s) => `<li><code>${s.keys}</code><span>${s.description}</span></li>`).join('')}
   </ul>
+  <p class="help-dialog-link">
+    See the full
+    <a href="https://mathlive.io/mathfield/reference/keybindings/#inline-shortcuts" target="_blank" rel="noopener noreferrer">list of keyboard shortcuts</a>
+    for more.
+  </p>
   <div class="app-dialog-actions">
     <button type="button" class="help-dialog-close app-dialog-primary">Close</button>
   </div>
