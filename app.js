@@ -1572,6 +1572,16 @@ function buildInsertSnippetItems(field) {
     onActivate: () => {
       activeMathField = field;
       field.insert(snippet.latex, { format: 'latex' });
+      // Same MathLive quirk fieldToRecoverOnRefocus works around for window blur/refocus (see
+      // its own comment near scratchField, at the top of this file) - insert() leaves the field
+      // unable to accept further physical keystrokes (navigating and deleting still work) until
+      // focus genuinely moves away and back, confirmed by the fact that clicking into a
+      // different field and back fixes it by hand. Done immediately rather than waiting on a
+      // 'focus' event, since nothing here causes the window itself to blur in the first place.
+      const position = field.position;
+      scratchField.focus();
+      field.focus();
+      field.position = position;
     },
   }));
 }
