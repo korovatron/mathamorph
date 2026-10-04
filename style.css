@@ -687,6 +687,13 @@ math-field::part(menu-item):hover {
      with fewer (or more) results would shift the whole dialog - including the dropdown the
      mouse is still sitting over - right out from under the pointer. */
   height: min(80vh, 34rem);
+  /* <dialog> defaults to overflow: auto - every child here already fits within the fixed
+     height above (the snippet list is the only part meant to scroll, via its own
+     overflow-y further down), but Chromium's scrollHeight calculation for a scroll container
+     whose flex child is itself a flex-basis:0 scroll container can still pick up that child's
+     full unclipped content height, giving the dialog a second, redundant scrollbar of its own
+     right alongside the list's. Disabling overflow here rules that out entirely. */
+  overflow: hidden;
 }
 
 .manage-snippets-dialog[open] {
@@ -751,7 +758,10 @@ math-field::part(menu-item):hover {
   display: flex;
   align-items: stretch;
   gap: 0.6rem;
-  padding: 0.5rem 0;
+  /* The right padding keeps a visible gap between the delete button and the scrollbar that
+     appears in the list above once there are enough snippets to need scrolling - without it,
+     the delete button sits flush against the scrollbar track with no breathing room at all. */
+  padding: 0.5rem 0.6rem 0.5rem 0;
   border-bottom: 1px solid var(--border);
 }
 
