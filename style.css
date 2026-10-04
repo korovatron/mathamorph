@@ -920,6 +920,22 @@ math-field::part(menu-item):hover {
   color: #ffffff;
 }
 
+/* Wider on desktop-sized viewports (same breakpoint as the header logo/title) so the equation
+   previews get correspondingly more room too - placed after every other Manage Snippets rule
+   above (rather than alongside the header's own min-width: 1024px block near the top of this
+   file) so it actually wins the cascade: a later same-specificity rule always beats an earlier
+   one, matching or not, and .manage-snippets-dialog/.manage-snippet-preview's own unconditional
+   width rules live down here. */
+@media (min-width: 1024px) {
+  .manage-snippets-dialog {
+    width: 44rem;
+  }
+
+  .manage-snippet-preview {
+    width: 14rem;
+  }
+}
+
 .about-dialog {
   max-width: 24rem;
 }

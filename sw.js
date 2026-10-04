@@ -1,7 +1,7 @@
 // Bump this on every release that changes any cached first-party file - it's what triggers
 // clients to pick up the new version (see the activate handler below, and registerServiceWorker
 // in app.js which prompts an already-open tab to reload once the new worker takes over).
-const CACHE_NAME = 'mathamorph-v1.3.0';
+const CACHE_NAME = 'mathamorph-v1.3.1';
 
 // MathLive, Compute Engine, and MathJax are all pinned to exact versions in index.html/app.js
 // rather than loaded as "latest" - this is deliberate: an unannounced upstream release could
