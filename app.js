@@ -598,10 +598,13 @@ document.addEventListener('visibilitychange', () => {
 function updateAuthMenuUI() {
   authToggleLabel.textContent = currentUser ? 'Sign out' : 'Sign in to sync snippets';
   authToggleBtn.title = currentUser ? `Signed in as ${currentUser.email}` : '';
+  authToggleIcon.classList.toggle('auth-icon-signed-in', Boolean(currentUser));
+  authToggleIcon.classList.toggle('auth-icon-signed-out', !currentUser);
 }
 
 const authToggleBtn = document.getElementById('auth-toggle');
 const authToggleLabel = document.getElementById('auth-toggle-label');
+const authToggleIcon = document.getElementById('auth-toggle-icon');
 
 authToggleBtn.addEventListener('click', () => {
   if (currentUser) {

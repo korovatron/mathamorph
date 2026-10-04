@@ -10,6 +10,7 @@
   --control-bg: #eceef2;
   --control-bg-hover: #e1e4e9;
   --error: #b00020;
+  --success: #1b8a3c;
   --field-bg: #ffffff;
 
   --title-math: #2979ff;
@@ -41,6 +42,7 @@
   --control-bg: #262a33;
   --control-bg-hover: #323844;
   --error: #ff6b6b;
+  --success: #5fd988;
   --field-bg: #1b1e24;
 
   --header-bg: #1c1f26;
@@ -124,6 +126,16 @@ header h1 {
   width: 1.1rem;
   height: 1.1rem;
   color: var(--header-text);
+}
+
+/* Overrides the icon's inherited colour (rather than the whole menu item's text) so only the
+   little account glyph itself signals sign-in status at a glance. */
+.auth-icon-signed-out {
+  color: var(--error);
+}
+
+.auth-icon-signed-in {
+  color: var(--success);
 }
 
 .header-menu-divider {
