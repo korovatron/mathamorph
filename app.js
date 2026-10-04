@@ -597,7 +597,9 @@ document.addEventListener('visibilitychange', () => {
 
 function updateAuthMenuUI() {
   authToggleLabel.textContent = currentUser ? 'Sign out' : 'Sign in to sync snippets';
-  authToggleBtn.title = currentUser ? `Signed in as ${currentUser.email}` : '';
+  authToggleBtn.title = currentUser
+    ? `Signed in as ${currentUser.email}`
+    : 'Sign in with your Google account to sync your snippet library';
   authToggleIcon.classList.toggle('auth-icon-signed-in', Boolean(currentUser));
   authToggleIcon.classList.toggle('auth-icon-signed-out', !currentUser);
 }
