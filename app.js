@@ -537,7 +537,11 @@ function initializeDocument() {
     }
   }
   const usingDefaults = isBlankDocument(entries);
-  buildDocument(usingDefaults ? DEFAULT_DOCUMENT_ENTRIES : entries, {
+  // Blank lines left over from mid-session editing (e.g. an equation deleted, or a fresh
+  // "+ Add Equation" line never filled in) have nothing worth restoring - drop them so the
+  // remaining equations are compacted to the front rather than restored with gaps between them.
+  const nonBlankEntries = usingDefaults ? null : entries.filter((entry) => entry.latex && entry.latex.trim());
+  buildDocument(usingDefaults ? DEFAULT_DOCUMENT_ENTRIES : nonBlankEntries, {
     focus: !shouldShowAboutOnStartup(),
   });
   examplesHintEl.hidden = !usingDefaults;
