@@ -644,9 +644,38 @@ math-field::part(menu-item):hover {
   align-items: stretch;
 }
 
-.snippet-dialog .app-dialog-field input {
+.snippet-dialog .app-dialog-field input,
+.snippet-dialog .app-dialog-field select {
+  box-sizing: border-box;
   width: 100%;
   text-align: left;
+}
+
+.snippet-new-category-input {
+  margin-top: 0.4rem;
+}
+
+.app-dialog-field-optional {
+  font-weight: normal;
+  color: var(--text-muted);
+}
+
+/* Shared by every plain dropdown in the app (the category filter below and the Save as snippet
+   dialog's category field) so they all look identical - deliberately not a native
+   `<input list=...>` combo, whose unstylable native suggestions popup looks nothing like the
+   rest of the app. */
+.themed-select {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.3rem;
+  color: var(--text);
+  background: var(--control-bg);
+}
+
+.themed-select:focus {
+  outline: none;
+  border-color: var(--field-border-focus);
+  box-shadow: 0 0 0 2px rgba(41, 121, 255, 0.25);
 }
 
 .manage-snippets-dialog {
@@ -658,6 +687,33 @@ math-field::part(menu-item):hover {
 .manage-snippets-dialog[open] {
   display: flex;
   flex-direction: column;
+}
+
+.manage-snippets-filters {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.manage-snippets-search {
+  flex: 1;
+  min-width: 0;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.3rem;
+  color: var(--text);
+  background: var(--control-bg);
+}
+
+.manage-snippets-category-filter {
+  flex: none;
+  max-width: 10rem;
+}
+
+.manage-snippets-search:focus {
+  outline: none;
+  border-color: var(--field-border-focus);
+  box-shadow: 0 0 0 2px rgba(41, 121, 255, 0.25);
 }
 
 .manage-snippets-list {
@@ -673,9 +729,22 @@ math-field::part(menu-item):hover {
   padding: 1rem 0;
 }
 
+.manage-snippets-group-heading {
+  margin: 0.9rem 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.manage-snippets-group-heading:first-child {
+  margin-top: 0;
+}
+
 .manage-snippet-row {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 0.6rem;
   padding: 0.5rem 0;
   border-bottom: 1px solid var(--border);
@@ -685,9 +754,13 @@ math-field::part(menu-item):hover {
   border-bottom: none;
 }
 
+/* Stretched (via the row's align-items above) to match the combined height of the stacked
+   name + category fields alongside it, rather than sitting shorter than them. */
 .manage-snippet-preview {
   flex: none;
   width: 9rem;
+  display: flex;
+  align-items: center;
   border: 1px solid var(--border);
   border-radius: 0.3rem;
   background: none;
@@ -711,9 +784,21 @@ math-field::part(menu-item):hover {
   display: none;
 }
 
-.manage-snippet-name {
+.manage-snippet-fields {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.3rem;
+}
+
+/* box-sizing: border-box is what makes `width: 100%` actually fit the fields column above -
+   without it, each input's own padding and border add on top of that 100%, overflowing past
+   the column's right edge and into the delete button next to it. */
+.manage-snippet-name {
+  box-sizing: border-box;
+  width: 100%;
   padding: 0.35rem 0.5rem;
   border: 1px solid var(--border-strong);
   border-radius: 0.3rem;
@@ -727,14 +812,47 @@ math-field::part(menu-item):hover {
   box-shadow: 0 0 0 2px rgba(41, 121, 255, 0.25);
 }
 
-.manage-snippet-delete {
-  flex: none;
-  padding: 0.35rem 0.7rem;
+/* A notch smaller and more muted than the name field above it, so the category reads as
+   secondary metadata rather than competing with the snippet's own name. */
+.manage-snippet-category {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.3rem 0.5rem;
   border: 1px solid var(--border-strong);
   border-radius: 0.3rem;
-  background: none;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  background: var(--control-bg);
+}
+
+.manage-snippet-category:focus {
+  outline: none;
+  border-color: var(--field-border-focus);
+  box-shadow: 0 0 0 2px rgba(41, 121, 255, 0.25);
+  color: var(--text);
+}
+
+/* Identical in size and style to .doc-line's delete-line button in the scratchpad above, so
+   every "delete this" icon button in the app looks and behaves the same way. */
+.manage-snippet-delete {
+  align-self: center;
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.4rem;
+  background: var(--field-bg);
   color: var(--text-muted);
   cursor: pointer;
+}
+
+.manage-snippet-delete svg {
+  width: 65%;
+  height: 65%;
 }
 
 .manage-snippet-delete:hover {

@@ -58,6 +58,12 @@ const headerMenuDropdown = document.getElementById('header-menu-dropdown');
 const SUN_ICON = '<circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.9" y1="4.9" x2="6.3" y2="6.3"/><line x1="17.7" y1="17.7" x2="19.1" y2="19.1"/><line x1="4.9" y1="19.1" x2="6.3" y2="17.7"/><line x1="17.7" y1="6.3" x2="19.1" y2="4.9"/></g>';
 const MOON_ICON = '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>';
 
+// Shared by every small square "delete this" icon button (a document line, a saved snippet) so
+// they all look and behave identically rather than drifting apart.
+const DELETE_ICON_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">' +
+  '<line x1="4" y1="4" x2="20" y2="20"/><line x1="20" y1="4" x2="4" y2="20"/></svg>';
+
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   themeToggleLabel.textContent = theme === 'dark' ? 'Light mode' : 'Dark mode';
@@ -310,9 +316,7 @@ function createLine(initialLatex) {
   deleteBtn.type = 'button';
   deleteBtn.className = 'delete-line';
   deleteBtn.setAttribute('aria-label', 'Delete line');
-  deleteBtn.innerHTML =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">' +
-    '<line x1="4" y1="4" x2="20" y2="20"/><line x1="20" y1="4" x2="4" y2="20"/></svg>';
+  deleteBtn.innerHTML = DELETE_ICON_SVG;
   deleteBtn.addEventListener('click', () => removeLine(line));
 
   // MathLive's own virtual keyboard toggle button works fine on desktop, but since its touch
@@ -495,11 +499,36 @@ function createSnippetId() {
   return `snippet-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-// `tags` isn't used by any UI yet, but is included from the start so that adding a
-// filter/grouping feature later never needs a data migration - just a UI built on data that's
+// `category` groups/filters snippets in Manage Snippets and the Insert Snippet submenu.
+// Deliberately optional, defaulting to '' - organising a snippet is never forced on the user at
+// save time, and a blank category is a perfectly normal, permanent state rather than something
+// that needs fixing later. See categoryLabel() below for how a blank category is displayed.
+//
+// `tags` isn't used by any UI yet, but is included from the start so that adding a separate
+// free-form tagging feature later never needs a data migration - just a UI built on data that's
 // already shaped for it.
-function createSnippet(name, latex, tags = []) {
-  return { id: createSnippetId(), name, latex, tags };
+function createSnippet(name, latex, category = '', tags = []) {
+  return { id: createSnippetId(), name, latex, category, tags };
+}
+
+// Every snippet saved before this feature existed (and every one saved since, unless the user
+// deliberately chose one) has no category - rather than writing a literal 'Uncategorised' into
+// that snippet's own data the first time it's touched, that label is only ever computed here, at
+// the point something needs to group or filter by category. That keeps a blank category
+// genuinely blank in storage, and leaves no ambiguity if a user ever wants a category actually
+// named 'Uncategorised'.
+const UNCATEGORISED_LABEL = 'Uncategorised';
+function categoryLabel(snippet) {
+  return (snippet.category || '').trim() || UNCATEGORISED_LABEL;
+}
+
+// Distinct categories actually in use, sorted alphabetically - used to populate both the Save as
+// snippet dialog's datalist and the Manage Snippets filter dropdown. Derived from the snippets
+// themselves rather than kept as a separate list, so a category nothing uses any more just stops
+// appearing on its own - there's never an empty, orphaned category left to clean up.
+function distinctCategories(snippets) {
+  const set = new Set(snippets.map((s) => (s.category || '').trim()).filter(Boolean));
+  return [...set].sort((a, b) => a.localeCompare(b));
 }
 
 // --- Cloud sync (Google sign-in + Firestore) ---
@@ -1401,6 +1430,11 @@ saveSnippetDialog.innerHTML = `
       <label for="snippet-dialog-name">Name</label>
       <input id="snippet-dialog-name" type="text" ${NO_PASSWORD_MANAGER_ATTRS} required />
     </div>
+    <div class="app-dialog-field">
+      <label for="snippet-dialog-category">Category <span class="app-dialog-field-optional">(optional)</span></label>
+      <select id="snippet-dialog-category" class="themed-select"></select>
+      <input id="snippet-dialog-new-category" class="snippet-new-category-input" type="text" placeholder="New category name" hidden ${NO_PASSWORD_MANAGER_ATTRS} />
+    </div>
     <div class="app-dialog-actions">
       <button type="button" class="snippet-dialog-cancel">Cancel</button>
       <button type="submit" value="save" class="app-dialog-primary">Save</button>
@@ -1410,14 +1444,33 @@ saveSnippetDialog.innerHTML = `
 document.body.appendChild(saveSnippetDialog);
 enableClickOutsideToClose(saveSnippetDialog);
 const snippetNameInput = saveSnippetDialog.querySelector('#snippet-dialog-name');
+const snippetCategorySelect = saveSnippetDialog.querySelector('#snippet-dialog-category');
+const snippetNewCategoryInput = saveSnippetDialog.querySelector('#snippet-dialog-new-category');
 saveSnippetDialog.querySelector('.snippet-dialog-cancel').addEventListener('click', () => saveSnippetDialog.close('cancel'));
+
+// An ordinary <input list=...> would let you type a brand-new category inline, but the native
+// suggestions popup that comes with it can't be restyled - in Chrome it renders like a stray
+// speech bubble that looks nothing like the rest of the app. A plain themed <select> matches the
+// Manage Snippets category filter exactly; this sentinel option (vanishingly unlikely to collide
+// with a real category name) reveals a plain text input for typing a new one instead.
+const NEW_CATEGORY_OPTION_VALUE = '\u0000__new_category__';
+snippetCategorySelect.addEventListener('change', () => {
+  const isNew = snippetCategorySelect.value === NEW_CATEGORY_OPTION_VALUE;
+  snippetNewCategoryInput.hidden = !isNew;
+  if (isNew) {
+    snippetNewCategoryInput.value = '';
+    snippetNewCategoryInput.focus();
+  }
+});
 
 let snippetLatexToSave = null;
 saveSnippetDialog.addEventListener('close', () => {
   if (saveSnippetDialog.returnValue !== 'save') return;
   const name = snippetNameInput.value.trim();
   if (!name || !snippetLatexToSave) return;
-  saveSnippets([...loadSnippets(), createSnippet(name, snippetLatexToSave)]);
+  const category =
+    snippetCategorySelect.value === NEW_CATEGORY_OPTION_VALUE ? snippetNewCategoryInput.value.trim() : snippetCategorySelect.value;
+  saveSnippets([...loadSnippets(), createSnippet(name, snippetLatexToSave, category)]);
   showStatus(`Saved "${name}" as a snippet.`, false);
 });
 
@@ -1429,16 +1482,20 @@ function openSaveSnippetDialog(latex) {
   snippetLatexToSave = latex;
   saveSnippetDialog.returnValue = '';
   snippetNameInput.value = '';
+  snippetNewCategoryInput.hidden = true;
+  snippetNewCategoryInput.value = '';
+  snippetCategorySelect.replaceChildren(
+    makeOption('', 'No category'),
+    ...distinctCategories(loadSnippets()).map((category) => makeOption(category, category)),
+    makeOption(NEW_CATEGORY_OPTION_VALUE, '+ New category\u2026')
+  );
   saveSnippetDialog.showModal();
   snippetNameInput.focus();
 }
 
-// Builds the "Insert snippet" submenu's items for the current field - always available (like
-// Insert Matrix/Insert Template), since inserting one doesn't depend on anything being selected.
-function buildInsertSnippetItems(field) {
-  const snippets = loadSnippets();
-  if (snippets.length === 0) return [{ heading: 'No snippets saved yet' }];
-  return snippets.map((snippet) => ({
+// Builds one {label, description, onActivate} entry that inserts the given snippet into `field`.
+function buildInsertSnippetItem(snippet, field) {
+  return {
     label: snippet.name,
     description: snippet.latex,
     onActivate: () => {
@@ -1455,6 +1512,38 @@ function buildInsertSnippetItems(field) {
       const line = field.closest('.doc-line');
       if (line) rebuildMathField(line);
     },
+  };
+}
+
+// Builds the "Insert snippet" submenu's items for the current field - always available (like
+// Insert Matrix/Insert Template), since inserting one doesn't depend on anything being selected.
+// Flat when every snippet shares one category (or none do); otherwise nested one level into a
+// submenu per category, alphabetically with Uncategorised last, reusing the same submenu
+// mechanism Differentiate/Integrate/Solve already use for their variable-picking submenus.
+function buildInsertSnippetItems(field) {
+  const snippets = loadSnippets();
+  if (snippets.length === 0) return [{ heading: 'No snippets saved yet' }];
+
+  const categories = distinctCategories(snippets);
+  const hasUncategorised = snippets.some((s) => !(s.category || '').trim());
+  if (categories.length + (hasUncategorised ? 1 : 0) <= 1) {
+    return snippets.map((snippet) => buildInsertSnippetItem(snippet, field));
+  }
+
+  const groups = new Map();
+  for (const snippet of snippets) {
+    const label = categoryLabel(snippet);
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label).push(snippet);
+  }
+  const sortedLabels = [...groups.keys()].sort((a, b) => {
+    if (a === UNCATEGORISED_LABEL) return 1;
+    if (b === UNCATEGORISED_LABEL) return -1;
+    return a.localeCompare(b);
+  });
+  return sortedLabels.map((label) => ({
+    label,
+    submenu: groups.get(label).map((snippet) => buildInsertSnippetItem(snippet, field)),
   }));
 }
 
@@ -1930,6 +2019,13 @@ const manageSnippetsDialog = document.createElement('dialog');
 manageSnippetsDialog.className = 'app-dialog manage-snippets-dialog';
 manageSnippetsDialog.innerHTML = `
   <h2>Manage snippets</h2>
+  <div class="manage-snippets-filters">
+    <input type="search" class="manage-snippets-search" placeholder="Search by name&hellip;" aria-label="Search snippets by name" />
+    <select class="manage-snippets-category-filter themed-select" aria-label="Filter by category">
+      <option value="">All categories</option>
+    </select>
+  </div>
+  <datalist id="manage-snippet-category-list"></datalist>
   <div class="manage-snippets-list"></div>
   <div class="app-dialog-actions">
     <button type="button" class="manage-snippets-close">Close</button>
@@ -1938,12 +2034,111 @@ manageSnippetsDialog.innerHTML = `
 document.body.appendChild(manageSnippetsDialog);
 enableClickOutsideToClose(manageSnippetsDialog);
 const manageSnippetsList = manageSnippetsDialog.querySelector('.manage-snippets-list');
+const manageSnippetsSearch = manageSnippetsDialog.querySelector('.manage-snippets-search');
+const manageSnippetsCategoryFilter = manageSnippetsDialog.querySelector('.manage-snippets-category-filter');
+const manageSnippetCategoryList = manageSnippetsDialog.querySelector('#manage-snippet-category-list');
 manageSnippetsDialog.querySelector('.manage-snippets-close').addEventListener('click', () => manageSnippetsDialog.close());
+manageSnippetsSearch.addEventListener('input', renderManageSnippetsList);
+manageSnippetsCategoryFilter.addEventListener('change', renderManageSnippetsList);
 
-// Rebuilt from scratch every time the modal opens (and after every rename/delete) rather than
+function makeOption(value, label) {
+  return Object.assign(document.createElement('option'), { value, textContent: label });
+}
+
+// A read-only math-field reuses MathLive's own rendering to show what a snippet actually
+// contains, rather than asking the user to recognise it from its name alone.
+function buildManageSnippetPreview(snippet) {
+  const preview = document.createElement('math-field');
+  preview.className = 'manage-snippet-preview';
+  preview.setAttribute('read-only', '');
+  preview.tabIndex = -1;
+  preview.value = snippet.latex;
+  return preview;
+}
+
+function buildManageSnippetRow(snippet) {
+  const row = document.createElement('div');
+  row.className = 'manage-snippet-row';
+
+  const fields = document.createElement('div');
+  fields.className = 'manage-snippet-fields';
+
+  const nameInput = document.createElement('input');
+  nameInput.className = 'manage-snippet-name';
+  nameInput.type = 'text';
+  nameInput.setAttribute('aria-label', 'Snippet name');
+  applyNoPasswordManagerAttrs(nameInput);
+  nameInput.value = snippet.name;
+  nameInput.addEventListener('change', () => {
+    const current = loadSnippets();
+    const target = current.find((s) => s.id === snippet.id);
+    if (target) {
+      target.name = nameInput.value.trim() || target.name;
+      saveSnippets(current);
+    }
+    nameInput.value = target ? target.name : snippet.name;
+  });
+
+  const categoryInput = document.createElement('input');
+  categoryInput.className = 'manage-snippet-category';
+  categoryInput.type = 'text';
+  categoryInput.placeholder = 'No category';
+  categoryInput.setAttribute('list', 'manage-snippet-category-list');
+  categoryInput.setAttribute('aria-label', 'Snippet category');
+  applyNoPasswordManagerAttrs(categoryInput);
+  categoryInput.value = snippet.category || '';
+  // Re-renders the whole list on change (not just updating this row) so moving a snippet to a
+  // different group, or into/out of the last snippet of a now-empty category, is reflected in
+  // the grouping and filter dropdown immediately.
+  categoryInput.addEventListener('change', () => {
+    const current = loadSnippets();
+    const target = current.find((s) => s.id === snippet.id);
+    if (target) {
+      target.category = categoryInput.value.trim();
+      saveSnippets(current);
+    }
+    renderManageSnippetsList();
+  });
+
+  fields.append(nameInput, categoryInput);
+
+  const deleteBtn = document.createElement('button');
+  deleteBtn.type = 'button';
+  deleteBtn.className = 'manage-snippet-delete';
+  deleteBtn.setAttribute('aria-label', 'Delete snippet');
+  deleteBtn.innerHTML = DELETE_ICON_SVG;
+  deleteBtn.addEventListener('click', () => {
+    saveSnippets(loadSnippets().filter((s) => s.id !== snippet.id));
+    renderManageSnippetsList();
+  });
+
+  row.append(buildManageSnippetPreview(snippet), fields, deleteBtn);
+  return row;
+}
+
+// Rebuilt from scratch on every open, filter change, rename, recategorise or delete, rather than
 // patched in place - the list is short enough that this is simpler than tracking per-row state.
 function renderManageSnippetsList() {
   const snippets = loadSnippets();
+
+  // The category filter's own options are rebuilt every render (not just on open) so renaming a
+  // snippet into a brand-new category makes that category immediately choosable, and a category
+  // that's just been emptied out disappears again on its own - nothing to separately maintain.
+  // 'Uncategorised' only appears once something actually needs it, same as any other category.
+  const categories = distinctCategories(snippets);
+  const hasUncategorised = snippets.some((s) => !(s.category || '').trim());
+  const previousFilter = manageSnippetsCategoryFilter.value;
+  manageSnippetsCategoryFilter.replaceChildren(
+    makeOption('', 'All categories'),
+    ...categories.map((category) => makeOption(category, category)),
+    ...(hasUncategorised ? [makeOption(UNCATEGORISED_LABEL, UNCATEGORISED_LABEL)] : [])
+  );
+  manageSnippetsCategoryFilter.value = [...manageSnippetsCategoryFilter.options].some((o) => o.value === previousFilter)
+    ? previousFilter
+    : '';
+
+  manageSnippetCategoryList.replaceChildren(...categories.map((category) => makeOption(category, '')));
+
   manageSnippetsList.innerHTML = '';
 
   if (snippets.length === 0) {
@@ -1954,44 +2149,49 @@ function renderManageSnippetsList() {
     return;
   }
 
-  for (const snippet of snippets) {
-    const row = document.createElement('div');
-    row.className = 'manage-snippet-row';
+  const search = manageSnippetsSearch.value.trim().toLowerCase();
+  const categoryFilter = manageSnippetsCategoryFilter.value;
+  const filtered = snippets.filter((snippet) => {
+    const matchesSearch = !search || snippet.name.toLowerCase().includes(search) || categoryLabel(snippet).toLowerCase().includes(search);
+    const matchesCategory = !categoryFilter || categoryLabel(snippet) === categoryFilter;
+    return matchesSearch && matchesCategory;
+  });
 
-    // A read-only field reuses MathLive's own rendering to show what the snippet actually
-    // contains, rather than asking the user to recognise it from its name alone.
-    const preview = document.createElement('math-field');
-    preview.className = 'manage-snippet-preview';
-    preview.setAttribute('read-only', '');
-    preview.tabIndex = -1;
-    preview.value = snippet.latex;
+  if (filtered.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'manage-snippets-empty';
+    empty.textContent = 'No snippets match your search.';
+    manageSnippetsList.appendChild(empty);
+    return;
+  }
 
-    const nameInput = document.createElement('input');
-    nameInput.className = 'manage-snippet-name';
-    nameInput.type = 'text';
-    applyNoPasswordManagerAttrs(nameInput);
-    nameInput.value = snippet.name;
-    nameInput.addEventListener('change', () => {
-      const current = loadSnippets();
-      const target = current.find((s) => s.id === snippet.id);
-      if (target) {
-        target.name = nameInput.value.trim() || target.name;
-        saveSnippets(current);
-      }
-      nameInput.value = target ? target.name : snippet.name;
-    });
+  // Grouped by category, alphabetically, with Uncategorised always last - keeps related
+  // snippets together even in a long library, mirroring the context menu's own
+  // heading-above-a-group convention for the equivalent Insert Snippet submenu.
+  const groups = new Map();
+  for (const snippet of filtered) {
+    const label = categoryLabel(snippet);
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label).push(snippet);
+  }
+  const sortedLabels = [...groups.keys()].sort((a, b) => {
+    if (a === UNCATEGORISED_LABEL) return 1;
+    if (b === UNCATEGORISED_LABEL) return -1;
+    return a.localeCompare(b);
+  });
 
-    const deleteBtn = document.createElement('button');
-    deleteBtn.type = 'button';
-    deleteBtn.className = 'manage-snippet-delete';
-    deleteBtn.textContent = 'Delete';
-    deleteBtn.addEventListener('click', () => {
-      saveSnippets(loadSnippets().filter((s) => s.id !== snippet.id));
-      renderManageSnippetsList();
-    });
-
-    row.append(preview, nameInput, deleteBtn);
-    manageSnippetsList.appendChild(row);
+  for (const label of sortedLabels) {
+    // Only worth a heading once there's more than one group - a library that's entirely one
+    // category (or entirely uncategorised) gains nothing from a heading repeating the obvious.
+    if (sortedLabels.length > 1) {
+      const heading = document.createElement('h3');
+      heading.className = 'manage-snippets-group-heading';
+      heading.textContent = label;
+      manageSnippetsList.appendChild(heading);
+    }
+    for (const snippet of groups.get(label)) {
+      manageSnippetsList.appendChild(buildManageSnippetRow(snippet));
+    }
   }
 }
 
@@ -2038,7 +2238,14 @@ importSnippetsInput.addEventListener('change', () => {
     // with (or silently overwrite) one already in the library that happens to reuse the same id.
     const newOnes = imported
       .filter((entry) => entry && typeof entry.latex === 'string' && typeof entry.name === 'string')
-      .map((entry) => createSnippet(entry.name, entry.latex, Array.isArray(entry.tags) ? entry.tags : []));
+      .map((entry) =>
+        createSnippet(
+          entry.name,
+          entry.latex,
+          typeof entry.category === 'string' ? entry.category.trim() : '',
+          Array.isArray(entry.tags) ? entry.tags : []
+        )
+      );
     saveSnippets([...loadSnippets(), ...newOnes]);
     showStatus(`Imported ${newOnes.length} snippet${newOnes.length === 1 ? '' : 's'}.`, false);
   };
