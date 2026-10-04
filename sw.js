@@ -1,7 +1,7 @@
 // Bump this on every release that changes any cached first-party file - it's what triggers
 // clients to pick up the new version (see the activate handler below, and registerServiceWorker
 // in app.js which prompts an already-open tab to reload once the new worker takes over).
-const CACHE_NAME = 'mathamorph-v1.0.1';
+const CACHE_NAME = 'mathamorph-v1.0.3';
 
 // MathLive, Compute Engine, and MathJax are all pinned to exact versions in index.html/app.js
 // rather than loaded as "latest" - this is deliberate: an unannounced upstream release could
@@ -38,8 +38,9 @@ const PINNED_LIBRARY_ASSETS = [
   'https://unpkg.com/mathlive@0.111.0/sounds/plonk.wav',
   'https://unpkg.com/@cortex-js/compute-engine@0.147.0?module',
   'https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js',
-  // Pinned to the exact version/CDN Graphiti itself loads (see loadLZString/buildGraphitiUrl in
-  // app.js), so the "Open in Graphiti" context menu item's compressed URL format can never drift.
+  // Pinned to the exact version/CDN Graphiti and Komplexiti themselves load (see
+  // loadLZString/buildGraphitiUrl/buildKomplexitiUrl in app.js), so the "Open in
+  // Graphiti"/"Open in Komplexiti" context menu items' compressed URL format can never drift.
   'https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js',
 ];
 
@@ -55,6 +56,7 @@ const OWN_ASSETS = [
   './images/apple-touch-icon.png',
   './images/screenshot.png',
   './images/graphitiLogo.png',
+  './images/komplexitiLogo.png',
 ];
 
 const ASSETS_TO_CACHE = [...OWN_ASSETS, ...PINNED_LIBRARY_ASSETS];

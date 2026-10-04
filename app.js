@@ -728,10 +728,36 @@ function buildGraphitiUrl(LZString, latex, mode) {
   return `https://www.korovatron.co.uk/graphiti/#v=${compressed}`;
 }
 
-// Loaded on demand (only once "Open in Graphiti" is actually used) rather than unconditionally
-// up front - mirrors loadMathJax below. Pinned to the exact same version and CDN Graphiti itself
-// loads (see sw.js for the matching cached URL), so the compressed state format is guaranteed to
-// round-trip through its decoder unchanged.
+// "Open in Komplexiti" only makes sense for a genuine equation (not a bare expression, and not
+// an inequality) in exactly one free variable - Komplexiti's Argand-diagram plotter treats that
+// single unknown as the complex variable, whatever letter it's actually called (z, w, ...).
+function isKomplexitiEquation(latex) {
+  if (!latex || !latex.trim()) return false;
+  try {
+    if (!isHeaded(latex, 'Equal')) return false;
+    return freeVariablesOf(latex).length === 1;
+  } catch {
+    return false;
+  }
+}
+
+// Komplexiti reads its shared-diagram state from the same kind of "#v=" URL fragment as
+// Graphiti (see checkAndApplySharedState in Komplexiti's own main.js) - an LZString-compressed
+// JSON blob listing the expression card(s) to pre-load. cardRootFmt/color/colorMode are all left
+// unset here so Komplexiti falls back to its own defaults (cartesian roots, auto-assigned color).
+function buildKomplexitiUrl(LZString, latex) {
+  const state = {
+    v: 1,
+    expressions: [{ latex }],
+  };
+  const compressed = LZString.compressToEncodedURIComponent(JSON.stringify(state));
+  return `https://www.korovatron.co.uk/komplexiti/#v=${compressed}`;
+}
+
+// Loaded on demand (only once "Open in Graphiti"/"Open in Komplexiti" is actually used) rather
+// than unconditionally up front - mirrors loadMathJax below. Pinned to the exact same version
+// and CDN both apps themselves load (see sw.js for the matching cached URL), so the compressed
+// state format is guaranteed to round-trip through either app's decoder unchanged.
 let lzStringReadyPromise = null;
 function loadLZString() {
   if (!lzStringReadyPromise) {
@@ -968,6 +994,7 @@ const MENU_ICON_SAVE =
 const MENU_ICON_MODE =
   '<svg class="morph-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="8.5" width="18" height="7" rx="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="16" cy="12" r="2.4" fill="currentColor"/></svg>';
 const GRAPHITI_MENU_ICON = '<img src="images/graphitiLogo.png" alt="" class="morph-menu-icon" />';
+const KOMPLEXITI_MENU_ICON = '<img src="images/komplexitiLogo.png" alt="" class="morph-menu-icon" />';
 
 // Every menu row reserves this same slot before its label - whether or not it actually has an
 // icon - so every row lines up at a consistent indent regardless of which ones do (matching the
@@ -1671,6 +1698,44 @@ function buildExportMenu(field) {
     });
   }
 
+  // Only offered when the exportable LaTeX (selection, or the whole field) is a genuine
+  // single-variable equation - see isKomplexitiEquation for exactly what that means.
+  if (isKomplexitiEquation(latexForExport)) {
+    // Kick the (tiny) LZString load off now, while the menu is open, so it's normally already
+    // resolved by the time this item is actually clicked - see below for why that matters.
+    loadLZString().catch(() => {});
+    items.push({
+      label: 'Open in Komplexiti\u2026',
+      icon: KOMPLEXITI_MENU_ICON,
+      onMenuSelect: () => {
+        const latex = latexForExport;
+        // The tab has to be opened synchronously, right from this click, or most browsers'
+        // popup blockers silently swallow it - awaiting LZString first and only then calling
+        // window.open() would be too late. Opening it blank now and navigating it once the
+        // compressed state is ready keeps the gesture synchronous either way.
+        const komplexitiTab = window.open('', '_blank');
+        if (!komplexitiTab) {
+          showStatus('Please allow pop-ups to open in Komplexiti.', true);
+          return;
+        }
+        komplexitiTab.opener = null;
+        // See fieldToRecoverOnRefocus's own comment (near scratchField, at the top of this
+        // file) for why this field specifically needs recovering once the user comes back.
+        fieldToRecoverOnRefocus = field;
+        loadLZString()
+          .then((LZString) => {
+            komplexitiTab.location.href = buildKomplexitiUrl(LZString, latex);
+            trackGoatCounterEvent('Mathamorph - opened in Komplexiti');
+          })
+          .catch((err) => {
+            console.error(err);
+            komplexitiTab.close();
+            showStatus('Could not open in Komplexiti.', true);
+          });
+      },
+    });
+  }
+
   return { label: 'Export', submenu: items };
 }
 
@@ -1877,6 +1942,11 @@ aboutDialog.innerHTML = `
     Equations in x/y or r/&theta; can also be sent straight to
     <a href="https://www.korovatron.co.uk/graphiti/" target="_blank" rel="noopener noreferrer">Graphiti</a>,
     our companion graphing calculator, for plotting.
+  </p>
+  <p class="about-description">
+    Single-variable equations in a complex variable can be sent straight to
+    <a href="https://www.korovatron.co.uk/komplexiti/" target="_blank" rel="noopener noreferrer">Komplexiti</a>,
+    our companion Argand diagram plotter, for visualizing.
   </p>
   <p class="about-copyright">&copy; 2026 Neil Kendall</p>
   <p class="about-link">
