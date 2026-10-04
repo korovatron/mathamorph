@@ -57,6 +57,21 @@ body {
   background: var(--bg);
 }
 
+/* Form controls don't inherit the page's font by default - browsers give them their own
+   "control font" instead (Chrome's default is a fixed 13.3333px Arial, regardless of what the
+   page itself uses), so every text input/select/textarea in the app was rendering noticeably
+   smaller than its surrounding text. Below 16px, iOS Safari also auto-zooms the whole page on
+   focus to keep the text legible - explaining why opening Manage Snippets or Save as Snippet
+   (both of which focus a text input as soon as they open) zoomed in on iPhones specifically.
+   touch-action: manipulation alone (see the menu items below) was never going to fix that, since
+   the zoom wasn't about a double-tap gesture at all. */
+input,
+select,
+textarea,
+button {
+  font: inherit;
+}
+
 header {
   background: var(--header-bg);
   border-bottom: 1px solid var(--header-border);
