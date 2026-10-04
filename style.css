@@ -928,11 +928,11 @@ math-field::part(menu-item):hover {
    width rules live down here. */
 @media (min-width: 1024px) {
   .manage-snippets-dialog {
-    width: 44rem;
+    width: 56rem;
   }
 
   .manage-snippet-preview {
-    width: 14rem;
+    width: 20rem;
   }
 }
 
@@ -1050,6 +1050,25 @@ math-field::part(menu-item):hover {
 
 .help-dialog-link a {
   color: var(--field-border-focus);
+}
+
+/* Same reasoning (and the same cascade-ordering caveat) as the Manage Snippets rule above - on
+   desktop these three content-hugging dialogs just use their own max-width unchanged, which
+   looks noticeably narrow/cramped on a wide monitor (long paragraphs wrapping tightly in About
+   and Privacy; the Help dialog's two-column shortcut list barely has room for its own
+   descriptions). Each still only grows as wide as its own content wants, up to the larger cap. */
+@media (min-width: 1024px) {
+  .about-dialog {
+    max-width: 32rem;
+  }
+
+  .privacy-dialog {
+    max-width: 34rem;
+  }
+
+  .help-dialog {
+    max-width: 40rem;
+  }
 }
 
 /* Fills as much of the viewport as reasonably possible (rather than .app-dialog's small
