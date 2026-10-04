@@ -1925,7 +1925,7 @@ aboutDialog.innerHTML = `
   <p class="about-description">
     Single-variable equations in a complex variable can be sent straight to
     <a href="https://www.korovatron.co.uk/komplexiti/" target="_blank" rel="noopener noreferrer">Komplexiti</a>,
-    our companion Argand diagram plotter, for visualizing.
+    our companion Argand diagram plotter, for visualising.
   </p>
   <p class="about-copyright">&copy; 2026 Neil Kendall</p>
   <p class="about-link">
