@@ -642,15 +642,24 @@ async function reconcileWithCloud() {
 
 // Push if there's something new to send up; otherwise use the same tick to pull, in case another
 // device changed the document while this one sat idle. This interval - not any visibility/focus
-// event - is deliberately the *primary* way a backgrounded device notices a remote change: iOS
-// standalone home-screen PWAs have a long-standing WebKit bug where 'visibilitychange' (and
-// 'focus'/'pageshow') simply don't fire reliably on resume (see
-// https://bugs.webkit.org/show_bug.cgi?id=180523), unlike an ordinary Safari tab. A plain
-// setInterval doesn't depend on that API at all - the OS pauses it while backgrounded like any
-// other timer, but it resumes ticking as soon as the app is foregrounded again, so a remote
-// change is never more than about 30 seconds stale by the time anyone looks at this device next.
+// event - is the *primary* way a backgrounded device notices a remote change on iOS standalone
+// home-screen PWAs specifically: WebKit has a long-standing bug there where 'visibilitychange'
+// (and 'focus'/'pageshow', and even document.hidden itself) doesn't fire/update reliably on
+// resume (see https://bugs.webkit.org/show_bug.cgi?id=180523), unlike an ordinary Safari tab. A
+// plain setInterval doesn't depend on that API at all - iOS genuinely suspends JS execution while
+// such an app is backgrounded (this timer included), resuming it only once actually foregrounded.
+//
+// Everywhere else (desktop browsers, Android, and iOS Safari when *not* added to the home
+// screen), document.hidden is reliable - and those background tabs/windows do keep running timers
+// indefinitely rather than suspending them, so without this check, simply leaving a signed-in tab
+// open overnight would poll Firestore for no reason all night. Skipping the tick while hidden on
+// every platform except the one that actually needs the unconditional version keeps that cost
+// down to "only while someone could plausibly be looking at it" everywhere but there.
+const isIOSStandalonePWA = window.navigator.standalone === true;
+
 setInterval(() => {
   if (!currentUser) return;
+  if (!isIOSStandalonePWA && document.hidden) return;
   if (documentDirtyForCloud) pushDocumentToCloud();
   else reconcileWithCloud();
 }, DOCUMENT_CLOUD_SYNC_INTERVAL_MS);
