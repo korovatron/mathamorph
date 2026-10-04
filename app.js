@@ -1572,16 +1572,16 @@ function buildInsertSnippetItems(field) {
     onActivate: () => {
       activeMathField = field;
       field.insert(snippet.latex, { format: 'latex' });
-      // Same MathLive quirk fieldToRecoverOnRefocus works around for window blur/refocus (see
-      // its own comment near scratchField, at the top of this file) - insert() leaves the field
-      // unable to accept further physical keystrokes (navigating and deleting still work) until
-      // focus genuinely moves away and back, confirmed by the fact that clicking into a
-      // different field and back fixes it by hand. Done immediately rather than waiting on a
-      // 'focus' event, since nothing here causes the window itself to blur in the first place.
-      const position = field.position;
-      scratchField.focus();
-      field.focus();
-      field.position = position;
+      // Same MathLive quirk rebuildMathField works around for the showModal()-triggered case
+      // (see its own comment, and the bigger one near the end of this file) - insert() leaves
+      // the field unable to accept further physical keystrokes (navigating and deleting still
+      // work). Unlike the window blur/refocus variant fieldToRecoverOnRefocus handles, simply
+      // cycling focus away and back didn't reliably fix this one (confirmed by hand) - this is
+      // a known, longstanding MathLive/Chromium issue where that trick is reported to work only
+      // intermittently (https://github.com/arnog/mathlive/issues/2588). Replacing the field
+      // with a fresh instance is the one fix already proven reliable elsewhere in this file.
+      const line = field.closest('.doc-line');
+      if (line) rebuildMathField(line);
     },
   }));
 }
