@@ -374,7 +374,8 @@ main {
 
 math-field {
   font-size: 1.4rem;
-  padding: 0.75rem;
+  /* Padding lives on ::part(container) below, not here - see its comment for why. */
+  padding: 0;
   border: 1px solid var(--field-border);
   border-radius: 0.5rem;
   box-sizing: border-box;
@@ -387,6 +388,29 @@ math-field {
   --selection-color: var(--text);
   --contains-highlight-background-color: var(--field-contains-bg);
   --primary: var(--field-border-focus);
+}
+
+/* MathLive's inner container (the part that actually renders the formula and handles clicks)
+   only ever sizes itself to its content, top-aligned - on a short equation in a row stretched
+   taller than that content (see .doc-line's align-items: stretch, which makes every field match
+   the height of the stacked delete/board-mode/keyboard-toggle buttons beside it), that leaves
+   dead space below the formula that's visually inside the field but outside this container, so
+   clicking there doesn't focus the field, and the formula itself sits nearer the top of the
+   field than the middle. Stretching the container to fill the field (height/width: 100%) and
+   centering its content fixes both: the container - not the field's own box - is what's actually
+   clickable, so it needs to cover the whole field for clicks anywhere in it to land on the
+   formula. Padding moves here from the field itself so the container's edges still line up with
+   the field's, rather than leaving a slim unclickable strip around the border.
+   .board-content math-field below undoes this padding for the no-chrome board-mode display.
+   !important is needed on every property here: MathLive's own shadow-DOM stylesheet also
+   targets this element directly (as .ML__container), and that internal rule otherwise wins the
+   cascade over this ::part() rule from outside the shadow tree despite matching specificity. */
+math-field::part(container) {
+  height: 100% !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  align-items: center !important;
+  padding: 0.75rem !important;
 }
 
 math-field:focus-within {
@@ -652,12 +676,18 @@ math-field::part(menu-item):hover {
 .manage-snippet-preview {
   flex: none;
   width: 9rem;
-  padding: 0.3rem 0.4rem;
   border: 1px solid var(--border);
   border-radius: 0.3rem;
   background: none;
   font-size: 0.75rem;
   pointer-events: none;
+}
+
+/* Overrides the general math-field::part(container) padding above with this preview's own
+   (formerly-on-the-host) tighter padding - see that rule's comment for why padding now lives on
+   ::part(container) rather than the host at all. */
+.manage-snippet-preview::part(container) {
+  padding: 0.3rem 0.4rem !important;
 }
 
 .manage-snippet-preview:focus-within {
@@ -878,6 +908,10 @@ math-field::part(menu-item):hover {
   box-shadow: none;
   padding: 0;
   background: none;
+}
+
+.board-content math-field::part(container) {
+  padding: 0 !important;
 }
 
 .board-content math-field:focus-within {
