@@ -2212,6 +2212,43 @@ showHelpBtn.addEventListener('click', () => {
   closeHeaderMenu();
 });
 
+const privacyDialog = document.createElement('dialog');
+privacyDialog.className = 'app-dialog privacy-dialog';
+privacyDialog.innerHTML = `
+  <h2>Privacy</h2>
+  <p class="about-description">
+    Mathamorph works entirely in your browser by default - your equations and saved snippets are
+    stored only on this device, and the app works fully offline. Nothing is ever sent anywhere
+    unless you choose to sign in.
+  </p>
+  <p class="about-description">
+    Signing in with Google (from this menu) is entirely optional. It exists purely to sync your
+    snippet library and current equations across your own devices, via Google Sign-In and a
+    private, per-account database (Firestore, hosted in the EU) that only your account can read or
+    write. It's never shared, sold, or used for anything else. Signing out at any time stops
+    further syncing - your local work is unaffected either way.
+  </p>
+  <p class="about-description">
+    Anonymous visit analytics (page views only - no cookies, no personal data) are collected via
+    <a href="https://www.goatcounter.com" target="_blank" rel="noopener noreferrer">GoatCounter</a>
+    to help us see how the app is used.
+  </p>
+  <div class="app-dialog-actions">
+    <button type="button" class="privacy-dialog-close app-dialog-primary">Close</button>
+  </div>
+`;
+document.body.appendChild(privacyDialog);
+enableClickOutsideToClose(privacyDialog);
+const privacyCloseBtn = privacyDialog.querySelector('.privacy-dialog-close');
+privacyCloseBtn.addEventListener('click', () => privacyDialog.close());
+
+const showPrivacyBtn = document.getElementById('show-privacy');
+showPrivacyBtn.addEventListener('click', () => {
+  privacyDialog.showModal();
+  privacyCloseBtn.focus();
+  closeHeaderMenu();
+});
+
 // "Board mode" (see the board-mode-btn on each line, above) makes the most of the viewport to
 // show one equation as large as possible without clipping, for displaying to a class on a
 // projector or whiteboard. A single shared read-only math-field is reused across every line

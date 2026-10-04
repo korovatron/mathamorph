@@ -804,6 +804,14 @@ math-field::part(menu-item):hover {
   cursor: pointer;
 }
 
+.privacy-dialog {
+  max-width: 26rem;
+}
+
+.privacy-dialog a {
+  color: var(--field-border-focus);
+}
+
 .help-dialog {
   max-width: 28rem;
 }
