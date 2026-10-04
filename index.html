@@ -7,7 +7,12 @@
 <!-- End GoatCounter Analytics -->
 
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<!-- maximum-scale=1.0 + user-scalable=no is a deliberate trade-off: it's what stops iOS Safari's
+     own "zoom the focused control into comfortable view" behaviour (which, unlike the classic
+     small-font zoom, persists even once every form control is a comfortable 16px+ - see the
+     Manage Snippets / Save as snippet investigation in git history), at the cost of also
+     disabling the user's own pinch-zoom gesture everywhere in the app. -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>Free Online Equation Editor & Maths Solver | Mathamorph</title>
 <meta name="description" content="Free online equation editor. Type maths like text, then simplify, solve, factorise, expand, differentiate, integrate, or find eigenvalues with a click. Export results as PNG, SVG, or LaTeX.">
 
