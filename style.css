@@ -135,6 +135,10 @@ header h1 {
   align-items: center;
   gap: 0.6rem;
   width: 100%;
+  /* The Privacy item is a plain <a> (see index.html) rather than a <button> like its siblings -
+     box-sizing is spelled out explicitly here so its width: 100% + padding matches the buttons'
+     browser-default border-box sizing instead of overflowing past them. */
+  box-sizing: border-box;
   padding: 0.5rem 0.9rem;
   border: none;
   border-radius: 0.4rem;
@@ -143,6 +147,7 @@ header h1 {
   font-size: 0.9rem;
   text-align: left;
   white-space: nowrap;
+  text-decoration: none;
   cursor: pointer;
   touch-action: manipulation;
 }
@@ -1017,14 +1022,6 @@ math-field::part(menu-item):hover {
   cursor: pointer;
 }
 
-.privacy-dialog {
-  max-width: 26rem;
-}
-
-.privacy-dialog a {
-  color: var(--field-border-focus);
-}
-
 .help-dialog {
   max-width: 28rem;
 }
@@ -1073,17 +1070,13 @@ math-field::part(menu-item):hover {
 }
 
 /* Same reasoning (and the same cascade-ordering caveat) as the Manage Snippets rule above - on
-   desktop these three content-hugging dialogs just use their own max-width unchanged, which
-   looks noticeably narrow/cramped on a wide monitor (long paragraphs wrapping tightly in About
-   and Privacy; the Help dialog's two-column shortcut list barely has room for its own
-   descriptions). Each still only grows as wide as its own content wants, up to the larger cap. */
+   desktop these content-hugging dialogs just use their own max-width unchanged, which looks
+   noticeably narrow/cramped on a wide monitor (long paragraphs wrapping tightly in About; the
+   Help dialog's two-column shortcut list barely has room for its own descriptions). Each still
+   only grows as wide as its own content wants, up to the larger cap. */
 @media (min-width: 1024px) {
   .about-dialog {
     max-width: 32rem;
-  }
-
-  .privacy-dialog {
-    max-width: 34rem;
   }
 
   .help-dialog {
