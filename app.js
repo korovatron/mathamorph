@@ -671,18 +671,6 @@ onAuthStateChanged(auth, async (user) => {
   );
 });
 
-// A brand-new library is an empty, uninviting list with nothing to demonstrate the feature -
-// seed it with a couple of common formulas on the very first run, so there's something useful
-// (and something to learn the UI from) right away. Checked against the raw stored value, not
-// just an empty array, so deliberately deleting every snippet later doesn't bring these back.
-function seedDefaultSnippetsIfNeeded() {
-  if (localStorage.getItem(SNIPPETS_STORAGE_KEY) !== null) return;
-  saveSnippets([
-    createSnippet('Quadratic formula', 'x=\\frac{-b\\pm\\sqrt{b^2-4ac}}{2a}'),
-    createSnippet('Trig identity: 1 + tan\u00b2\u03b8 = sec\u00b2\u03b8', '1+\\tan^2\\theta\\equiv\\sec^2\\theta'),
-  ]);
-}
-
 // A brand-new document has nothing to demonstrate the "right-click to morph" hint with - seed
 // it with a few worked examples on the very first run, each ready to showcase a different kind
 // of operation straight away: an equation to Solve, a factored cubic to Expand, and a definite
@@ -2481,7 +2469,6 @@ boardDialog.addEventListener('close', () => {
   boardSourceField = null;
 });
 
-seedDefaultSnippetsIfNeeded();
 initializeDocument();
 // A modal dialog's showModal() call permanently breaks physical-keystroke character insertion
 // (navigation, deletion, and programmatic edits all keep working - only typing stops) in any
