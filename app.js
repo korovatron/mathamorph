@@ -598,6 +598,17 @@ function applyIncomingSnippets(snippets) {
   if (manageSnippetsDialog.open) renderManageSnippetsList();
 }
 
+// Two devices that each saved the same formula before either of them had ever signed in end up
+// with the same snippet in substance but different (locally-generated) ids - matching the
+// sign-in merge below by id alone treats that as two distinct snippets, re-adding what the user
+// sees as "the same snippet" every time another of their devices first signs in. Comparing LaTeX
+// instead (the part the user actually recognises as "this is the same snippet") catches that
+// case too. Whitespace is ignored since MathLive can serialise visually identical input with
+// trivial spacing differences.
+function normalizeLatexForDedup(latex) {
+  return (latex || '').replace(/\s+/g, '');
+}
+
 function updateAuthMenuUI() {
   authToggleLabel.textContent = currentUser ? 'Sign out' : 'Sign in to sync snippets';
   authToggleBtn.title = currentUser
@@ -644,10 +655,15 @@ onAuthStateChanged(auth, async (user) => {
     } else {
       // Signing in on a device that already has local snippets the cloud doesn't know about yet
       // (e.g. first sign-in on a second device): merge rather than silently discarding either
-      // side - union by id, then push the merged result back up.
+      // side - union by id (falling back to a LaTeX match, see normalizeLatexForDedup above, for
+      // snippets independently created on two devices before either had ever synced), then push
+      // the merged result back up.
       const cloudSnippets = Array.isArray(snap.data().snippets) ? snap.data().snippets : [];
       const cloudIds = new Set(cloudSnippets.map((s) => s.id));
-      const localOnly = loadSnippets().filter((s) => !cloudIds.has(s.id));
+      const cloudLatexes = new Set(cloudSnippets.map((s) => normalizeLatexForDedup(s.latex)));
+      const localOnly = loadSnippets().filter(
+        (s) => !cloudIds.has(s.id) && !cloudLatexes.has(normalizeLatexForDedup(s.latex))
+      );
       const mergedSnippets = [...cloudSnippets, ...localOnly];
       applyIncomingSnippets(mergedSnippets);
       if (localOnly.length > 0) {
