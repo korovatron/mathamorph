@@ -229,6 +229,62 @@ header h1 {
   color: #ffffff;
 }
 
+/* A row for an assignable Morph operation (see buildAssignableMenuRow in app.js) is two
+   independent buttons side by side, not one - each gets its own hover highlight, rather than
+   the row highlighting as a whole, so it's visually obvious before you even click that the
+   shortcut side is a separate target from the label side. */
+.morph-menu-item-row {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.morph-menu-item-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+  padding: 0.4rem 0.8rem;
+  border: none;
+  border-radius: 0.4rem;
+  background: none;
+  color: var(--text);
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.morph-menu-item-trigger:hover {
+  background: var(--field-border-focus);
+  color: #ffffff;
+}
+
+.morph-menu-shortcut-btn {
+  flex: none;
+  padding: 0.4rem 0.6rem;
+  border: none;
+  border-radius: 0.4rem;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.morph-menu-shortcut-btn:hover {
+  background: var(--control-bg-hover);
+  color: var(--text);
+}
+
+/* "Add shortcut" (nothing assigned yet) reads as an invitation rather than a fixed label, so
+   it's styled slightly differently from an actual assigned combo. */
+.morph-menu-shortcut-btn-unassigned {
+  font-style: italic;
+}
+
 /* Reserved before every row's label (see createMenuIconSlot in app.js) so every row lines up at
    the same indent, whether or not it actually has an icon in it. */
 .morph-menu-icon-slot {
@@ -721,6 +777,53 @@ math-field::part(menu-item):hover {
 .app-dialog-field-optional {
   font-weight: normal;
   color: var(--text-muted);
+}
+
+.shortcut-dialog {
+  min-width: 20rem;
+}
+
+.shortcut-dialog-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* The actual capture target - focused automatically when the dialog opens, and styled to look
+   distinctly "waiting for input" (dashed border) rather than like a normal text field, since
+   typing into it does nothing: only real keydown events are read (see
+   handleShortcutCaptureKeydown in app.js). */
+.shortcut-capture-box {
+  padding: 0.75rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: 0.4rem;
+  background: var(--control-bg);
+  color: var(--text);
+  font-size: 0.95rem;
+  text-align: center;
+  cursor: default;
+}
+
+.shortcut-capture-box:focus {
+  outline: none;
+  border-style: solid;
+  border-color: var(--field-border-focus);
+  box-shadow: 0 0 0 2px rgba(41, 121, 255, 0.25);
+}
+
+.shortcut-capture-box-empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.shortcut-dialog-warning {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.shortcut-dialog-warning-blocking {
+  color: var(--error);
 }
 
 /* Shared by every plain dropdown in the app (the category filter below and the Save as snippet

@@ -292,6 +292,16 @@ function setupMathField(field, line) {
     }
   });
   field.addEventListener('keydown', (ev) => {
+    // User-assigned Morph shortcuts (see userShortcuts above) - checked first since they always
+    // require a modifier, so can never collide with the plain-key +/- handling just below.
+    if (SHORTCUTS_SUPPORTED && (ev.ctrlKey || ev.metaKey)) {
+      const opId = shortcutOpIdFor({ ctrlKey: ev.ctrlKey, shiftKey: ev.shiftKey, altKey: ev.altKey, metaKey: ev.metaKey, key: ev.key.toLowerCase() });
+      if (opId) {
+        ev.preventDefault();
+        triggerOperationById(opId, field);
+        return;
+      }
+    }
     if (!ev.altKey && !ev.ctrlKey && !ev.metaKey) {
       if (isPlusKeyEvent(ev)) {
         // Let the "+"/"=" character insert as usual - just remember it might be the start of a
@@ -1100,6 +1110,132 @@ const MORPH_CATEGORIES = [
 // sub-submenus (see MORPH_CATEGORIES), and excluded from them to avoid duplication.
 const MORPH_TOP_LEVEL_IDS = ['simplify', 'evaluate', 'solve'];
 
+// --- User-assignable keyboard shortcuts for Morph operations --------------------------------
+//
+// There are deliberately no shipped defaults here (see the commit history for why: a prototype
+// with fixed Ctrl+Shift+<letter> defaults turned out to collide with real, pre-installed
+// software - specifically AMD's Adrenalin overlay - on real hardware, which a web page has no
+// way to detect or avoid in advance, since global hotkeys are intercepted by the OS before a
+// page's own JavaScript ever sees the keystroke). Letting each user assign their own combo
+// instead means whatever's already claimed on their particular machine is simply irrelevant -
+// they pick something else, and find out immediately (the assignment UI captures a real
+// keypress, so if something else swallows it, nothing visibly happens - an immediate, honest
+// signal rather than a shortcut that silently fails later).
+
+// Keyboard shortcuts are meaningless without a physical keyboard. Checking for an actual touch
+// device (e.g. `maxTouchPoints`) would also hide this on touchscreen laptops that have a perfectly
+// good keyboard attached too - `any-pointer: fine` instead asks "is there a precise pointer
+// available at all", which stays true on exactly those hybrid devices and only goes false on
+// phones/tablets. Those devices only ever reach this menu via a long-press anyway (see the
+// touch-only field-menu button), and can already run every operation that way with no keyboard
+// involved at all, so there's nothing lost by hiding the assignment UI there.
+const SHORTCUTS_SUPPORTED = window.matchMedia('(any-pointer: fine)').matches;
+
+const SHORTCUTS_STORAGE_KEY = 'mathamorph-shortcuts';
+
+function loadShortcuts() {
+  const raw = localStorage.getItem(SHORTCUTS_STORAGE_KEY);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (err) {
+    console.error(err);
+    return {};
+  }
+}
+
+function saveShortcuts(shortcuts) {
+  localStorage.setItem(SHORTCUTS_STORAGE_KEY, JSON.stringify(shortcuts));
+}
+
+// { [operationId]: { ctrlKey, shiftKey, altKey, metaKey, key } } - key is the lowercased
+// KeyboardEvent.key of whatever non-modifier key completed the combo.
+let userShortcuts = loadShortcuts();
+
+// A string uniquely identifying a modifier+key combination, for comparing two combos (or
+// looking one up) regardless of where the booleans came from (a stored assignment, or a live
+// keydown event).
+function comboSignature(combo) {
+  return `${combo.ctrlKey ? 1 : 0}${combo.shiftKey ? 1 : 0}${combo.altKey ? 1 : 0}${combo.metaKey ? 1 : 0}:${combo.key.toLowerCase()}`;
+}
+
+// Human-readable form of a combo for display - reflects whatever modifiers were actually
+// pressed (Cmd vs Ctrl) rather than assuming a platform, since the combo itself was captured
+// directly from a real keystroke rather than chosen from a cross-platform-aware picker.
+function comboLabel(combo) {
+  const parts = [];
+  if (combo.ctrlKey) parts.push('Ctrl');
+  if (combo.metaKey) parts.push('Cmd');
+  if (combo.altKey) parts.push('Alt');
+  if (combo.shiftKey) parts.push('Shift');
+  parts.push(combo.key.length === 1 ? combo.key.toUpperCase() : combo.key);
+  return parts.join('+');
+}
+
+// Which (if any) other operation already has this exact combo assigned - used both to warn
+// before silently stealing it, and by the keydown dispatcher to find what to run.
+function shortcutOpIdFor(combo) {
+  const sig = comboSignature(combo);
+  return Object.keys(userShortcuts).find((opId) => comboSignature(userShortcuts[opId]) === sig) || null;
+}
+
+// Combos MathLive itself already binds by default (extracted from its own shortcuts table -
+// see the "list of keyboard shortcuts" link in the Help dialog) - assigning one of these still
+// works, it just also silently shadows whatever MathLive normally does with it while a math
+// field is focused, which is worth a heads-up rather than a silent surprise.
+const MATHLIVE_RESERVED_SIGNATURES = new Set([
+  ...['a', 'b', 'c', 'd', 'e', 'f', 'h', 'l', 'n', 'p', 'v', 'x', 'y', 'z'].map((k) => comboSignature({ ctrlKey: true, shiftKey: false, altKey: false, metaKey: false, key: k })),
+  ...['a', 'b', 'e', 'f', 'n', 'p', 'z'].map((k) => comboSignature({ ctrlKey: true, shiftKey: true, altKey: false, metaKey: false, key: k })),
+  ...['a', 'c', 'v', 'x', 'z'].map((k) => comboSignature({ ctrlKey: false, shiftKey: false, altKey: false, metaKey: true, key: k })),
+  ...['y', 'z'].map((k) => comboSignature({ ctrlKey: false, shiftKey: true, altKey: false, metaKey: true, key: k })),
+]);
+
+// Checks a freshly-captured combo for anything worth telling the user about before it's saved.
+// `blocking: true` means it was never saved at all (shown inline, capture stays live so they can
+// just try another combo); anything else is saved anyway (see the module comment above for why
+// this app only ever warns rather than blocks for conflicts it can't be fully sure matter) but
+// still worth flagging inline.
+function checkComboConcerns(combo, assigningOpId) {
+  if (!combo.ctrlKey && !combo.metaKey) {
+    return { blocking: true, message: 'A shortcut needs to include Ctrl (or Cmd) so it never clashes with ordinary typing.' };
+  }
+  const conflictingOpId = shortcutOpIdFor(combo);
+  if (conflictingOpId && conflictingOpId !== assigningOpId) {
+    const label = operations.find((op) => op.id === conflictingOpId)?.label || conflictingOpId;
+    return { blocking: false, message: `Already assigned to "${label}" - saving will remove it from there.` };
+  }
+  if (MATHLIVE_RESERVED_SIGNATURES.has(comboSignature(combo))) {
+    return { blocking: false, message: 'MathLive already uses this combination by default - this will override that while a math field is focused.' };
+  }
+  if ((combo.ctrlKey || combo.metaKey) && combo.altKey && !combo.shiftKey) {
+    return { blocking: false, message: 'Ctrl+Alt can be hard to type on some non-US keyboards (it\u2019s indistinguishable from AltGr) - consider adding Shift too.' };
+  }
+  return null;
+}
+
+// Runs an operation by id exactly as the Morph menu itself would (see buildOperationMenuItem) -
+// shared by the keyboard-shortcut dispatcher below, since both need identical behaviour,
+// including Series opening its dialog and Solve/Differentiate/Integrate falling back to a
+// best-guess variable (there's no interactive picker available from a keydown event).
+function triggerOperationById(opId, field) {
+  const op = operations.find((candidate) => candidate.id === opId);
+  if (!op) return;
+  activeMathField = field;
+  if (field.selectionIsCollapsed) field.executeCommand('selectAll');
+  const unknowns = freeVariablesOf(getSelectionLatex() || '');
+  if (op.id === 'series') {
+    openSeriesDialog(field, unknowns);
+    return;
+  }
+  if (op.needsVariable) {
+    const variable = bestGuessVariable(unknowns);
+    runOperation((latex) => op.compute(latex, variable));
+    return;
+  }
+  runOperation(op.compute);
+}
+
 // A single shared context menu for "Morph" operations, triggered by right-clicking a selection.
 // MathLive's own menu system has a long-standing upstream bug where nested-submenu clicks get
 // swallowed (https://github.com/arnog/mathlive/issues/2927), which made "Morph" unreliable when
@@ -1270,6 +1406,12 @@ function addSubmenu(menu, label, items, title, icon) {
       continue;
     }
 
+    if (item.opId && SHORTCUTS_SUPPORTED) {
+      subLi.appendChild(buildAssignableMenuRow(item));
+      submenu.appendChild(subLi);
+      continue;
+    }
+
     const subButton = document.createElement('button');
     subButton.type = 'button';
     subButton.className = 'morph-menu-item';
@@ -1313,6 +1455,53 @@ function addSubmenu(menu, label, items, title, icon) {
   li.append(toggle, submenu);
   menu.appendChild(li);
   return li;
+}
+
+// Builds a menu row for an assignable Morph operation as two independently-clickable regions
+// (rather than the single <button> every other row uses) - the label/icon side runs the
+// operation as normal, the right-aligned shortcut side opens the assignment dialog. These have
+// to be genuinely separate elements, not one button with a nested one (invalid HTML, and an
+// ambiguous click target) - see openAssignShortcutDialog for the dialog itself.
+function buildAssignableMenuRow(item) {
+  const row = document.createElement('div');
+  row.className = 'morph-menu-item-row';
+
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'morph-menu-item-trigger';
+  trigger.setAttribute('role', 'menuitem');
+  if (item.description) trigger.title = item.description;
+  trigger.appendChild(createMenuIconSlot(item.icon));
+  trigger.appendChild(document.createTextNode(item.label));
+  trigger.addEventListener('click', () => {
+    item.onActivate();
+    closeFieldMenu();
+  });
+
+  const shortcutBtn = document.createElement('button');
+  shortcutBtn.type = 'button';
+  shortcutBtn.className = 'morph-menu-shortcut-btn';
+  refreshShortcutButton(shortcutBtn, item);
+  shortcutBtn.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    openAssignShortcutDialog(item.opId, item.label);
+  });
+
+  row.append(trigger, shortcutBtn);
+  return row;
+}
+
+// Updates a shortcut button's label/style/tooltip to reflect the current assignment (or lack of
+// one).
+function refreshShortcutButton(shortcutBtn, item) {
+  const assigned = userShortcuts[item.opId];
+  shortcutBtn.textContent = assigned ? comboLabel(assigned) : 'Add shortcut';
+  shortcutBtn.classList.toggle('morph-menu-shortcut-btn-unassigned', !assigned);
+  const description = assigned
+    ? `Keyboard shortcut for ${item.label}: ${comboLabel(assigned)} - click to change or remove`
+    : `Add a keyboard shortcut for ${item.label}`;
+  shortcutBtn.title = description;
+  shortcutBtn.setAttribute('aria-label', description);
 }
 
 // A 5x5 grid of cells (matching MathLive's own insert-matrix size range) that highlights up to
@@ -1381,6 +1570,119 @@ const NO_PASSWORD_MANAGER_ATTR_LIST = [
 const NO_PASSWORD_MANAGER_ATTRS = NO_PASSWORD_MANAGER_ATTR_LIST.map(([name, value]) => `${name}="${value}"`).join(' ');
 function applyNoPasswordManagerAttrs(input) {
   for (const [name, value] of NO_PASSWORD_MANAGER_ATTR_LIST) input.setAttribute(name, value);
+}
+
+// The keyboard-capture UI for assigning a Morph operation's shortcut (see userShortcuts above) -
+// a single shared dialog reused for every operation, like seriesDialog below. Rather than a
+// structured picker (modifier checkboxes + a key dropdown), the user presses the actual
+// combination they want: that's what makes this self-testing - if something on their machine
+// (another app's global hotkey) is already intercepting that combination, nothing will visibly
+// happen when they press it here, immediately, rather than the shortcut silently failing later
+// when they try to rely on it.
+const shortcutDialog = document.createElement('dialog');
+shortcutDialog.className = 'app-dialog shortcut-dialog';
+shortcutDialog.innerHTML = `
+  <h2 class="shortcut-dialog-title">Shortcut</h2>
+  <p class="shortcut-dialog-hint">Press the key combination you want to use - it must include Ctrl (or Cmd). Press Esc to cancel.</p>
+  <div class="shortcut-capture-box" tabindex="0" role="button"></div>
+  <p class="shortcut-dialog-warning" hidden></p>
+  <div class="app-dialog-actions">
+    <button type="button" class="shortcut-dialog-clear">Clear shortcut</button>
+    <button type="button" class="shortcut-dialog-close app-dialog-primary">Close</button>
+  </div>
+`;
+document.body.appendChild(shortcutDialog);
+enableClickOutsideToClose(shortcutDialog);
+const shortcutDialogTitle = shortcutDialog.querySelector('.shortcut-dialog-title');
+const shortcutCaptureBox = shortcutDialog.querySelector('.shortcut-capture-box');
+const shortcutDialogWarning = shortcutDialog.querySelector('.shortcut-dialog-warning');
+const shortcutDialogClear = shortcutDialog.querySelector('.shortcut-dialog-clear');
+shortcutDialog.querySelector('.shortcut-dialog-close').addEventListener('click', () => shortcutDialog.close());
+
+const SHORTCUT_PLACEHOLDER_TEXT = 'Press a key combination\u2026';
+const MODIFIER_ONLY_KEYS = new Set(['Control', 'Shift', 'Alt', 'Meta']);
+let assignShortcutOpId = null;
+
+function renderShortcutDialogIdle() {
+  const existing = userShortcuts[assignShortcutOpId];
+  shortcutCaptureBox.textContent = existing ? comboLabel(existing) : SHORTCUT_PLACEHOLDER_TEXT;
+  shortcutCaptureBox.classList.toggle('shortcut-capture-box-empty', !existing);
+  shortcutDialogWarning.hidden = true;
+  shortcutDialogWarning.classList.remove('shortcut-dialog-warning-blocking');
+  shortcutDialogClear.hidden = !existing;
+}
+
+// While a modifier is held but the combo isn't complete yet (no regular key pressed alongside
+// it), show what's building up so far - purely visual, nothing is captured until a non-modifier
+// key arrives.
+function livePreviewFor(ev) {
+  const parts = [];
+  if (ev.ctrlKey) parts.push('Ctrl');
+  if (ev.metaKey) parts.push('Cmd');
+  if (ev.altKey) parts.push('Alt');
+  if (ev.shiftKey) parts.push('Shift');
+  return parts.length ? `${parts.join('+')}+\u2026` : SHORTCUT_PLACEHOLDER_TEXT;
+}
+
+function handleShortcutCaptureKeydown(ev) {
+  ev.preventDefault();
+  ev.stopPropagation();
+  // <dialog> elements close on Escape for free, but that relies on the keydown's default
+  // action - which the preventDefault() above just suppressed, so it's re-done by hand here.
+  if (ev.key === 'Escape') {
+    shortcutDialog.close();
+    return;
+  }
+  if (MODIFIER_ONLY_KEYS.has(ev.key)) {
+    shortcutCaptureBox.textContent = livePreviewFor(ev);
+    return;
+  }
+
+  const combo = { ctrlKey: ev.ctrlKey, shiftKey: ev.shiftKey, altKey: ev.altKey, metaKey: ev.metaKey, key: ev.key.toLowerCase() };
+  const concern = checkComboConcerns(combo, assignShortcutOpId);
+  if (concern?.blocking) {
+    shortcutCaptureBox.textContent = SHORTCUT_PLACEHOLDER_TEXT;
+    shortcutDialogWarning.hidden = false;
+    shortcutDialogWarning.textContent = concern.message;
+    shortcutDialogWarning.classList.add('shortcut-dialog-warning-blocking');
+    return;
+  }
+
+  // Assigning a combo already used elsewhere moves it here rather than leaving a stale
+  // duplicate behind - checkComboConcerns above already warned about exactly this case.
+  const sig = comboSignature(combo);
+  for (const otherId of Object.keys(userShortcuts)) {
+    if (otherId !== assignShortcutOpId && comboSignature(userShortcuts[otherId]) === sig) delete userShortcuts[otherId];
+  }
+  userShortcuts[assignShortcutOpId] = combo;
+  saveShortcuts(userShortcuts);
+
+  shortcutCaptureBox.textContent = comboLabel(combo);
+  shortcutCaptureBox.classList.remove('shortcut-capture-box-empty');
+  shortcutDialogClear.hidden = false;
+  shortcutDialogWarning.classList.remove('shortcut-dialog-warning-blocking');
+  shortcutDialogWarning.hidden = !concern;
+  if (concern) shortcutDialogWarning.textContent = `\u26a0\ufe0f ${concern.message}`;
+}
+
+shortcutDialogClear.addEventListener('click', () => {
+  delete userShortcuts[assignShortcutOpId];
+  saveShortcuts(userShortcuts);
+  renderShortcutDialogIdle();
+});
+
+shortcutDialog.addEventListener('close', () => {
+  shortcutCaptureBox.removeEventListener('keydown', handleShortcutCaptureKeydown);
+});
+
+function openAssignShortcutDialog(opId, opLabel) {
+  closeFieldMenu();
+  assignShortcutOpId = opId;
+  shortcutDialogTitle.textContent = `Shortcut for ${opLabel}`;
+  renderShortcutDialogIdle();
+  shortcutCaptureBox.addEventListener('keydown', handleShortcutCaptureKeydown);
+  shortcutDialog.showModal();
+  shortcutCaptureBox.focus();
 }
 
 // Series needs three pieces of information (variable, expansion point, truncation order) rather
@@ -1578,6 +1880,7 @@ function buildOperationMenuItem(op, unknowns, field) {
     return {
       label: op.label,
       description: op.description,
+      opId: op.id,
       onActivate: () => openSeriesDialog(field, unknowns),
     };
   }
@@ -1600,6 +1903,7 @@ function buildOperationMenuItem(op, unknowns, field) {
     return {
       label: op.label,
       description: op.description,
+      opId: op.id,
       onActivate: () => {
         activeMathField = field;
         runOperation((latex) => op.compute(latex, variable));
@@ -1610,6 +1914,7 @@ function buildOperationMenuItem(op, unknowns, field) {
   return {
     label: op.label,
     description: op.description,
+    opId: op.id,
     onActivate: () => {
       activeMathField = field;
       runOperation(op.compute);
