@@ -2621,7 +2621,7 @@ aboutDialog.innerHTML = `
   </div>
   <p class="about-description">
     Mathamorph lets you create and transform equations ready to drop into any document, slide, or
-    app. Type maths as easily as text, then <em>morph</em> it: simplify, solve, factorise, expand,
+    app. Type maths as easily as text, then <strong class="hint-morph"><em>morph</em></strong> it: simplify, solve, factorise, expand,
     integrate, differentiate, or find eigenvalues, all with a quick highlight and click.
   </p>
   <p class="about-description">
@@ -2640,8 +2640,7 @@ aboutDialog.innerHTML = `
     our companion Argand diagram plotter, for visualising.
   </p>
   <p class="about-description">
-    Sign in with Google (from the menu) to sync your snippet library across your devices - see
-    <strong>Privacy</strong> in the menu for details.
+    Sign in with Google (from the menu) to sync your snippet library across your devices.
   </p>
   <p class="about-copyright">&copy; 2026 Neil Kendall</p>
   <p class="about-link">
