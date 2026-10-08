@@ -782,6 +782,14 @@ math-field::part(menu-item):hover {
   color: #ffffff;
 }
 
+/* .app-dialog-actions button:hover (above) is more specific than .app-dialog-primary alone, so
+   without this it would win on hover and swap the primary button's background to the plain
+   --control-bg while its white label text stayed as-is - unreadable in light mode. */
+.app-dialog-actions .app-dialog-primary:hover {
+  background: var(--field-border-focus);
+  filter: brightness(0.88);
+}
+
 /* A snippet's name can be much longer than a single variable/number, so (unlike Series' fields)
    it gets its own full-width row instead of the compact label-left/input-right layout. */
 .snippet-dialog {
