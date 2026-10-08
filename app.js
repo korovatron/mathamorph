@@ -239,6 +239,16 @@ function isMinusKeyEvent(ev) {
   return ev.code === 'Minus' || ev.code === 'NumpadSubtract';
 }
 
+// MathLive already recognises "floor"/"ceil" as inline shortcuts (built in), but has no
+// equivalent for absolute value, modulus or complex conjugate - add them here on top of the
+// defaults (rather than replacing field.inlineShortcuts outright) so everything else MathLive
+// ships with keeps working. "#?" is MathLive's own token for "insert a \placeholder{} here".
+const EXTRA_INLINE_SHORTCUTS = {
+  abs: '\\left|#?\\right|',
+  mod: '\\left|#?\\right|',
+  conj: '\\overline{#?}',
+};
+
 // Wires up all the event listeners a line's math-field needs - shared by createLine() and
 // rebuildMathField() (see the latter for why a field sometimes needs fully recreating rather
 // than just reused).
@@ -265,7 +275,10 @@ function setupMathField(field, line) {
   }, true);
   // menuItems requires the field to be connected to the DOM, which only happens after
   // the caller appends the returned line - defer until MathLive reports it's mounted.
+  // (field.inlineShortcuts is also only readable/writable once mounted - reading it any
+  // earlier throws "Mathfield not mounted".)
   field.addEventListener('mount', () => {
+    field.inlineShortcuts = { ...field.inlineShortcuts, ...EXTRA_INLINE_SHORTCUTS };
     installFieldMenu(field);
     patchMatrixPickerHighlight(field);
     patchContentOverflow(field);
