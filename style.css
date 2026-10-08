@@ -494,6 +494,36 @@ main {
   color: var(--title-morph);
 }
 
+/* A small icon sized and aligned to sit inline within a sentence (unlike .hint-icon above,
+   which is its own flex item beside the text) - used in the touch wording to show the actual
+   glyph on the field's own menu button (three horizontal lines, like a hamburger menu) rather
+   than describing it in words alone. */
+.hint-inline-icon {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.15em;
+}
+
+/* Exactly one of these is ever shown - which one is decided by the same media query that
+   shows/hides the per-field menu button itself (see .field-menu-btn) - a mouse/trackpad
+   device gets the right-click wording, a touch-only device (which never fires a contextmenu
+   event) gets the tap-the-menu-button wording instead. The leading mouse icon (see .hint-icon)
+   only makes sense for the right-click wording, so it's hidden alongside it on touch too. */
+.hint-pointer-coarse {
+  display: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .hint-icon,
+  .hint-pointer-fine {
+    display: none;
+  }
+
+  .hint-pointer-coarse {
+    display: inline;
+  }
+}
+
 .hint-examples {
   font-size: 0.95rem;
   font-style: italic;

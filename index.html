@@ -258,18 +258,27 @@
   </header>
 
   <main>
-    <p class="hint" title="Type an equation, then right-click it or a selected part to open the menu. Morphing means manipulating the maths: simplify, solve, expand, factorise, differentiate or integrate. You can also export as PNG, SVG or LaTeX, open x/y and r/&#952; equations in Graphiti to plot them, or open single-variable complex equations in Komplexiti to visualise them.">
+    <!-- Two wordings sharing one hint - which is visible is decided purely by CSS (see
+         hint-pointer-fine/hint-pointer-coarse in style.css), using the same "is there a
+         hovering, precise pointer" media query that shows/hides the per-field menu button
+         itself (see .field-menu-btn) - right-click opens the menu on a mouse/trackpad, but
+         touch-only devices never fire a contextmenu event at all, and rely on that button
+         instead. Each gets its own tooltip for the same reason; the leading mouse icon only
+         makes sense for the right-click wording, so it's hidden alongside it on touch. -->
+    <p class="hint">
       <svg class="hint-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
         <path d="M12 3a7 7 0 0 1 7 7v2h-7z" fill="currentColor" />
         <rect x="5" y="3" width="14" height="18" rx="7" fill="none" stroke="currentColor" stroke-width="1.8" />
         <path d="M12 3v9M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" />
       </svg>
-      <span>Enter an equation. Right-click to <strong class="hint-morph"><em>morph</em></strong>, export, graph or add to your snippet library.</span>
+      <span class="hint-pointer-fine" title="Type an equation, then right-click it or a selected part to open the menu. Morphing means manipulating the maths: simplify, solve, expand, factorise, differentiate or integrate. You can also export as PNG, SVG or LaTeX, open x/y and r/&#952; equations in Graphiti to plot them, or open single-variable complex equations in Komplexiti to visualise them.">Enter an equation. Right-click to <strong class="hint-morph"><em>morph</em></strong>, export, graph or add to your snippet library.</span>
+      <span class="hint-pointer-coarse" title="Type an equation, then tap its menu button to open the menu. Morphing means manipulating the maths: simplify, solve, expand, factorise, differentiate or integrate. You can also export as PNG, SVG or LaTeX, open x/y and r/&#952; equations in Graphiti to plot them, or open single-variable complex equations in Komplexiti to visualise them.">Enter an equation. Tap a field's <svg class="hint-inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="20" y2="18" /></svg> button to <strong class="hint-morph"><em>morph</em></strong>, export, graph or add to your snippet library.</span>
     </p>
     <!-- Only shown when the document below is the pre-populated worked examples (brand-new
          session, or every equation deleted) - see initializeDocument/hideExamplesHint in app.js. -->
     <p class="hint hint-examples" id="examples-hint" hidden>
-      <span>These are examples - try right-clicking one and applying <strong>Solve</strong>, <strong>Expand</strong> or <strong>Integrate</strong>.</span>
+      <span class="hint-pointer-fine">These are examples - try right-clicking one and applying <strong>Solve</strong>, <strong>Expand</strong> or <strong>Integrate</strong>.</span>
+      <span class="hint-pointer-coarse">These are examples - try tapping one's <svg class="hint-inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="20" y2="18" /></svg> button and applying <strong>Solve</strong>, <strong>Expand</strong> or <strong>Integrate</strong>.</span>
     </p>
 
     <div class="document" id="document"></div>
