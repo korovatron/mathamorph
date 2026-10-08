@@ -1093,10 +1093,11 @@ const MORPH_CATEGORIES = [
   { label: 'Matrices', groups: ['matrix'] },
 ];
 
-// Simplify, Evaluate and Solve are generic enough, and reached for often enough, to be worth a
-// single click rather than making every use wait through an "Algebra" submenu - every other
-// operation is specific enough to a particular kind of selection that the extra click costs
-// little. These are shown above the submenus, and excluded from them to avoid duplication.
+// Simplify, Evaluate and Solve are generic enough, and reached for often enough, that they're
+// worth showing directly inside the "Morph" submenu rather than making every use wait through
+// an "Algebra" sub-submenu too - every other operation is specific enough to a particular kind
+// of selection that the extra click costs little. These are shown above the category
+// sub-submenus (see MORPH_CATEGORIES), and excluded from them to avoid duplication.
 const MORPH_TOP_LEVEL_IDS = ['simplify', 'evaluate', 'solve'];
 
 // A single shared context menu for "Morph" operations, triggered by right-clicking a selection.
@@ -1164,6 +1165,10 @@ const MENU_ICON_SAVE =
   '<svg class="morph-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h12a1 1 0 0 1 1 1V21l-7-4-7 4V4.5a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
 const MENU_ICON_MODE =
   '<svg class="morph-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="8.5" width="18" height="7" rx="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="16" cy="12" r="2.4" fill="currentColor"/></svg>';
+// Two curved arrows cycling into one another - standing in for "transform/morph" the way a
+// refresh icon stands in for "reload", since none of Simplify/Solve/etc. share one obvious glyph.
+const MENU_ICON_MORPH =
+  '<svg class="morph-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11a7 7 0 0 1 12-4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M17 4.5V7.5h-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M19 13a7 7 0 0 1-12 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M7 19.5V16.5h3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const GRAPHITI_MENU_ICON = '<img src="images/graphitiLogo.png" alt="" class="morph-menu-icon" />';
 const KOMPLEXITI_MENU_ICON = '<img src="images/komplexitiLogo.png" alt="" class="morph-menu-icon" />';
 
@@ -1612,13 +1617,6 @@ function buildOperationMenuItem(op, unknowns, field) {
   };
 }
 
-// Renders a {label, onActivate} or {label, submenu} descriptor from buildOperationMenuItem()
-// directly into a menu - shared by the top-level items and each category submenu's items.
-function renderMenuItem(menu, item) {
-  if (item.submenu) addSubmenu(menu, item.label, item.submenu, item.description);
-  else addMenuButton(menu, item.label, item.onActivate, item.description);
-}
-
 // Builds and shows the field's whole right-click menu: Morph operations for the current
 // selection (if any), clipboard actions, export, and the always-available insert/mode tools.
 function openFieldMenu(field, x, y) {
@@ -1630,20 +1628,20 @@ function openFieldMenu(field, x, y) {
   if (selectionLatex) {
     const unknowns = freeVariablesOf(selectionLatex);
 
-    const topLevelOps = operations.filter((op) => MORPH_TOP_LEVEL_IDS.includes(op.id));
-    for (const op of topLevelOps) {
-      renderMenuItem(fieldMenu, buildOperationMenuItem(op, unknowns, field));
-    }
-    if (topLevelOps.length) addMenuDivider(fieldMenu);
-
-    for (const category of MORPH_CATEGORIES) {
+    const topLevelItems = operations
+      .filter((op) => MORPH_TOP_LEVEL_IDS.includes(op.id))
+      .map((op) => buildOperationMenuItem(op, unknowns, field));
+    const categoryItems = MORPH_CATEGORIES.map((category) => {
       const items = operations.filter((op) => category.groups.includes(op.group) && !MORPH_TOP_LEVEL_IDS.includes(op.id));
-      addSubmenu(
-        fieldMenu,
-        category.label,
-        items.map((op) => buildOperationMenuItem(op, unknowns, field)),
-      );
-    }
+      return { label: category.label, submenu: items.map((op) => buildOperationMenuItem(op, unknowns, field)) };
+    });
+    addSubmenu(
+      fieldMenu,
+      'Morph',
+      [...topLevelItems, { divider: true }, ...categoryItems],
+      undefined,
+      MENU_ICON_MORPH,
+    );
     addMenuDivider(fieldMenu);
 
     // By this point there's always a selection - either the user's own, or the whole-field
