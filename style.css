@@ -302,6 +302,14 @@ header h1 {
   object-fit: contain;
 }
 
+/* The "Morph" entry's own icon keeps the same pink used for "morph" in the header title, even
+   on hover, rather than inheriting the plain hover color every other menu icon gets. */
+.morph-menu-icon-morph,
+.morph-menu-item:hover .morph-menu-icon-morph,
+.morph-menu-item-trigger:hover .morph-menu-icon-morph {
+  color: var(--title-morph);
+}
+
 .morph-submenu-toggle {
   position: relative;
   padding-right: 1.6rem;

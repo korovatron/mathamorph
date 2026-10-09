@@ -1304,7 +1304,7 @@ const MENU_ICON_MODE =
 // Two curved arrows cycling into one another - standing in for "transform/morph" the way a
 // refresh icon stands in for "reload", since none of Simplify/Solve/etc. share one obvious glyph.
 const MENU_ICON_MORPH =
-  '<svg class="morph-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11a7 7 0 0 1 12-4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M17 4.5V7.5h-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M19 13a7 7 0 0 1-12 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M7 19.5V16.5h3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  '<svg class="morph-menu-icon morph-menu-icon-morph" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11a7 7 0 0 1 12-4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M17 4.5V7.5h-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M19 13a7 7 0 0 1-12 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M7 19.5V16.5h3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const GRAPHITI_MENU_ICON = '<img src="images/graphitiLogo.png" alt="" class="morph-menu-icon" />';
 const KOMPLEXITI_MENU_ICON = '<img src="images/komplexitiLogo.png" alt="" class="morph-menu-icon" />';
 
