@@ -135,9 +135,6 @@ header h1 {
   align-items: center;
   gap: 0.6rem;
   width: 100%;
-  /* The Privacy item is a plain <a> (see index.html) rather than a <button> like its siblings -
-     box-sizing is spelled out explicitly here so its width: 100% + padding matches the buttons'
-     browser-default border-box sizing instead of overflowing past them. */
   box-sizing: border-box;
   padding: 0.5rem 0.9rem;
   border: none;
@@ -1175,6 +1172,62 @@ math-field::part(menu-item):hover {
   max-width: 28rem;
 }
 
+/* Unlike the other content-hugging dialogs above, the privacy policy's text is long enough to
+   need its own scroll area capped to a share of the viewport height - the dialog itself picks
+   up flex layout (see the [open] rule below) so the Close button stays pinned below the
+   scrollable body rather than scrolling away with it. */
+.privacy-dialog {
+  width: 34rem;
+  max-width: 90vw;
+  max-height: 85vh;
+}
+
+.privacy-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.privacy-dialog-body {
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.privacy-dialog-body h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.25rem;
+}
+
+.privacy-dialog-body h3 {
+  margin: 1.25rem 0 0.4rem;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.privacy-dialog-body p,
+.privacy-dialog-body ul {
+  margin: 0 0 0.75rem;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.privacy-dialog-body ul {
+  padding-left: 1.25rem;
+}
+
+.privacy-dialog-body a {
+  color: var(--field-border-focus);
+}
+
+.privacy-effective-date {
+  color: var(--text-muted);
+}
+
+.privacy-footer-note {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
 .help-shortcuts {
   list-style: none;
   margin: 0 0 1rem;
@@ -1230,6 +1283,10 @@ math-field::part(menu-item):hover {
 
   .help-dialog {
     max-width: 40rem;
+  }
+
+  .privacy-dialog {
+    width: 40rem;
   }
 }
 

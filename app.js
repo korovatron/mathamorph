@@ -2729,11 +2729,123 @@ showHelpBtn.addEventListener('click', () => {
   closeHeaderMenu();
 });
 
-// "Privacy" is a plain link (to policies/privacy_policy.html, a standalone static page rather
-// than a dialog) so it can also be used as the Privacy Policy URL on Google's OAuth consent
-// screen, which requires an actual URL rather than in-app modal content.
+// The in-app menu opens this scrollable dialog, whose content is kept identical to the
+// standalone policies/privacy_policy.html page. That separate static page is kept around (and
+// is NOT replaced by this dialog) because it needs to stay reachable as an actual URL, as
+// required for the Privacy Policy link on Google's OAuth consent screen - a dialog's content
+// isn't addressable by its own URL.
+const privacyDialog = document.createElement('dialog');
+privacyDialog.className = 'app-dialog privacy-dialog';
+privacyDialog.innerHTML = `
+  <div class="privacy-dialog-body">
+    <h2>Privacy Policy for Mathamorph</h2>
+    <p class="privacy-effective-date"><strong>Effective date:</strong> 5 October 2026</p>
+
+    <p>
+      This policy covers the Mathamorph app specifically. It sits alongside, and is the
+      documented exception to, the main
+      <a href="https://www.korovatron.co.uk/privacy-policy.html" target="_blank" rel="noopener noreferrer">Korovatron privacy policy</a>,
+      which covers the rest of korovatron.co.uk.
+    </p>
+
+    <h3>What We Collect</h3>
+    <p>
+      By default, Mathamorph collects nothing. Your equations and saved snippets are stored only
+      in your browser's local storage on your own device, and the app works fully offline.
+    </p>
+    <p>
+      Google account data collection is optional and only applies if you choose to sign in with
+      Google (from the app's menu) to sync your snippet library across your own devices. When you
+      sign in using Google OAuth, we receive:
+    </p>
+    <ul>
+      <li>Your email address</li>
+      <li>Your Google display name</li>
+    </ul>
+    <p>
+      This data, together with your synced snippet library, is stored in a private, per-account
+      Google Firestore database (hosted in the EU) that only your account can read or write.
+    </p>
+
+    <h3>Why We Store It</h3>
+    <p>The purposes below apply only when you choose optional Google sign-in:</p>
+    <ul>
+      <li>Sync your snippet library across the devices you use to access Mathamorph</li>
+      <li>Identify your account if you request data deletion or support</li>
+    </ul>
+    <p>We do not use your personal data for marketing, profiling, or advertising.</p>
+
+    <h3>Analytics</h3>
+    <p>
+      We use a privacy-focused analytics tool to measure aggregate website traffic, such as page
+      views, visit counts, and high-level browser/device statistics.
+    </p>
+    <p>
+      <strong>GoatCounter</strong> is an open-source, privacy-friendly analytics service. It
+      records page views and basic visit data (such as browser type and country) without using
+      cookies or tracking individuals across sites. GoatCounter's privacy policy is available at
+      <a href="https://www.goatcounter.com/help/privacy" target="_blank" rel="noopener noreferrer">goatcounter.com/help/privacy</a>.
+    </p>
+    <p>We do not track what equations or snippets you type, create, or save.</p>
+
+    <h3>Authentication</h3>
+    <p>
+      Mathamorph offers optional Google Sign-In for cross-device snippet sync. You can use the
+      app fully without signing in. If you choose to sign in, we do not collect or store
+      passwords - your login credentials are managed securely by Google. Signing out at any time
+      stops further syncing; your local work on that device is unaffected either way.
+    </p>
+
+    <h3>What We Don't Do</h3>
+    <p>We do not:</p>
+    <ul>
+      <li>Sell your personal data</li>
+      <li>Share your personal data with anyone else</li>
+      <li>Display your personal information publicly to other users</li>
+      <li>Use advertising or cross-site tracking cookies</li>
+      <li>Use analytics to profile you through individual equations or snippets</li>
+    </ul>
+    <p>
+      We do use trusted service providers: Google/Firebase (for optional sign-in and cloud sync)
+      and GoatCounter (for open-source, cookie-free page view analytics).
+    </p>
+
+    <h3>Data Deletion</h3>
+    <p>
+      You can request deletion of your account and any synced snippet data at any time. Just
+      email us at <a href="mailto:unimatrix@korovatron.co.uk">unimatrix@korovatron.co.uk</a>, and
+      we'll verify your identity using your Google account details before proceeding.
+    </p>
+
+    <h3>Security</h3>
+    <p>
+      If you choose optional Google Sign-In/cloud sync, your account and synced snippet data are
+      stored in Google Firestore, a secure cloud-hosted NoSQL database. We follow best practices
+      to protect your information, but no system is 100% foolproof. We rely on Google's robust
+      infrastructure and encourage you to sign out when you're done on a shared device.
+    </p>
+
+    <h3>Contact Us</h3>
+    <p>Questions? Concerns? Want your data deleted? Reach out at:</p>
+    <p>Email: <a href="mailto:unimatrix@korovatron.co.uk">unimatrix@korovatron.co.uk</a></p>
+
+    <p class="privacy-footer-note">Mathamorph is published by Korovatron (Neil Kendall).</p>
+  </div>
+  <div class="app-dialog-actions">
+    <button type="button" class="privacy-dialog-close app-dialog-primary">Close</button>
+  </div>
+`;
+document.body.appendChild(privacyDialog);
+enableClickOutsideToClose(privacyDialog);
+const privacyCloseBtn = privacyDialog.querySelector('.privacy-dialog-close');
+privacyCloseBtn.addEventListener('click', () => privacyDialog.close());
+
 const showPrivacyBtn = document.getElementById('show-privacy');
-showPrivacyBtn.addEventListener('click', () => closeHeaderMenu());
+showPrivacyBtn.addEventListener('click', () => {
+  privacyDialog.showModal();
+  privacyCloseBtn.focus();
+  closeHeaderMenu();
+});
 
 // "Board mode" (see the board-mode-btn on each line, above) makes the most of the viewport to
 // show one equation as large as possible without clipping, for displaying to a class on a
